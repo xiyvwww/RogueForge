@@ -12,7 +12,9 @@ namespace RogueForge;
 /// 使用方式：
 ///   1. 实现 <see cref="IObjectContainer"/>（<see cref="FillContainer"/> 必须实现；
 ///      <see cref="CanOpenContainer"/> 控制是否可打开；<see cref="OnContainerOpened"/> 是默认空实现
-///      （什么都不做），可按需 override 处理打开后的自定义逻辑）。
+///      （什么都不做），可按需 override 处理打开后的自定义逻辑；
+///      <see cref="GetContainerItems"/> / <see cref="SetContainerItems"/> 基类已提供 virtual 默认实现
+///      （读取/替换本建筑容器内的全部物品），按需 override）。
 ///   2. 打开容器的方法由接口层提供（扩展方法 <see cref="IObjectContainerExtensions.OpenContainer"/>），
 ///      在交互按钮中调用：<c>h.AddButton("RogueForge_打开", m => this.OpenContainer(m.Object, m.Agent))</c>
 ///      （按钮名称用 "RogueForge_" 前缀，显示文本注册由用户自行处理）
@@ -38,6 +40,22 @@ public interface IObjectContainer
 
     /// <summary>容器打开后的回调（默认空实现 = 什么都不做，可 override 添加自定义逻辑）。</summary>
     void OnContainerOpened();
+
+    /// <summary>
+    /// 获取当前实例容器内的所有物品（基类默认返回容器物品列表的<b>副本</b>，
+    /// 修改返回的列表不影响容器内实际物品；无物品栏时返回空列表）。
+    /// 需要直接操作容器时可按需 override。
+    /// </summary>
+    /// <returns>容器内的全部物品。</returns>
+    List<InvItem> GetContainerItems();
+
+    /// <summary>
+    /// 设置当前实例容器内的所有物品（基类默认清空容器原有物品后逐件加入给定列表；
+    /// 无物品栏时忽略；<paramref name="items"/> 为 null 等于清空容器）。
+    /// 需要自定义设置逻辑时可按需 override。
+    /// </summary>
+    /// <param name="items">要放入容器的新物品列表（可为 null = 清空容器）。</param>
+    void SetContainerItems(List<InvItem> items);
 }
 
 /// <summary>

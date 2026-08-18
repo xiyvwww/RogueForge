@@ -80,12 +80,59 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
     public virtual UnityEngine.Color? FreeItemColor => null;
 
     // ==================== IObjectContainer 默认实现（子类可 override 需要的，无需写默认值） ====================
-    // 接口 IObjectContainer 要求实现 CanOpenContainer / FillContainer（必须实现，基类提供 virtual 空默认值）；
-    // OnContainerOpened 是接口默认方法（空），基类提供 virtual 空实现兜底（net471 不支持默认接口实现）。
+    // 接口 IObjectContainer：FillContainer 必须由实现类实现（TryFillContainer 通过接口调用）；
+    // CanOpenContainer / OnContainerOpened / GetContainerItems / SetContainerItems 由基类提供默认实现。
     // 子类实现 IObjectContainer 时，这些成员由基类满足，只需 override 想自定义的成员。
 
     /// <summary>是否允许打开容器（默认 true；false 时基类不添加 Open 按钮）。</summary>
     public virtual bool CanOpenContainer => true;
+
+    /// <summary>
+    /// 获取当前实例容器内的所有物品（默认返回 <see cref="InvDatabase.InvItemList"/> 的<b>副本</b>，
+    /// 修改返回的列表不影响容器内实际物品；无物品栏时返回空列表）。子类可按需 override。
+    /// </summary>
+    /// <returns>容器内的全部物品。</returns>
+    public virtual List<InvItem> GetContainerItems()
+    {
+        if (base.objectInvDatabase == null || base.objectInvDatabase.InvItemList == null)
+        {
+            return new List<InvItem>();
+        }
+        return new List<InvItem>(base.objectInvDatabase.InvItemList);
+    }
+
+    /// <summary>
+    /// 设置当前实例容器内的所有物品（默认清空容器原有物品后逐件加入给定列表；
+    /// 无物品栏时忽略；<paramref name="items"/> 为 null 等于清空容器）。子类可按需 override。
+    /// </summary>
+    /// <param name="items">要放入容器的新物品列表（可为 null = 清空容器）。</param>
+    public virtual void SetContainerItems(List<InvItem> items)
+    {
+        try
+        {
+            if (base.objectInvDatabase == null) return;
+
+            // 与 TryFillContainer 一致：确保物品栏已初始化（槽位创建）后再操作
+            if (!base.objectInvDatabase.createdInventory)
+            {
+                base.objectInvDatabase.CreateInventory();
+            }
+
+            // 清空原有物品
+            base.objectInvDatabase.DestroyAllItems();
+
+            if (items == null) return;
+            foreach (InvItem item in items)
+            {
+                if (item == null || string.IsNullOrEmpty(item.invItemName)) continue;
+                base.objectInvDatabase.AddItem(item);
+            }
+        }
+        catch (Exception e)
+        {
+            CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] SetContainerItems 异常: {e.Message}");
+        }
+    }
 
     public void OnContainerOpened(){ }
 
@@ -343,8 +390,8 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
     /// 实例跨场景存活（dontRecycleOrDestroy），进入新关卡时用关卡号变化检测并重新填充。</summary>
     private int _containerFilledLevel = -1;
 
-    // 注：填充容器初始物品的钩子 FillContainer(InvDatabase) 已在上面"IObjectContainer 默认实现"区域定义
-    // （public virtual，满足接口 IObjectContainer.FillContainer 必须实现），TryFillContainer 在下方调用它。
+    // 注：填充容器初始物品的钩子 FillContainer(InvDatabase) 由 IObjectContainer 实现类提供
+    // （接口必须实现成员），TryFillContainer 在下方通过接口调用它。
 
     /// <summary>容器初始化：确保 InvDatabase 组件存在 + 标记真容器 + 填充物品（每个关卡一次）。</summary>
     private void TryFillContainer()
