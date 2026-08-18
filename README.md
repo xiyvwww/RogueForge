@@ -17,16 +17,16 @@
 - A：不不不，其实正式版一样不稳定，只是这么分比较帅而已。(*σ´∀`)σ
 
 ***目录***
-- [[基类 CustomObjectReal]]
+- [基类 CustomObjectReal](./RogueForge%20详细手册/基类%20CustomObjectReal.md)
 - 接口
-	- [[交互接口 IObjectInteraction]]
-	- [[商店接口 IStore]]
-	- [[背包接口 IBackpack ]]
-	- [[容器接口 IObjectContainer]]
-	- [[小地图传送接口 IMinimapTeleportable]]
-	- [[破碎接口 IBreakOpen]]
-	- [[刷新接口 IBuildingSpawner]]
-- [[地图相关工具类 KMap]]
+  - [交互接口 IObjectInteraction](./RogueForge%20详细手册/接口/交互接口%20IObjectInteraction.md)
+  - [商店接口 IStore](./RogueForge%20详细手册/接口/商店接口%20IStore.md)
+  - [背包接口 IBackpack](./RogueForge%20详细手册/接口/背包接口%20IBackpack.md)
+  - [容器接口 IObjectContainer](./RogueForge%20详细手册/接口/容器接口%20IObjectContainer.md)
+  - [小地图传送接口 IMinimapTeleportable](./RogueForge%20详细手册/接口/小地图传送接口%20IMinimapTeleportable.md)
+  - [破碎接口 IBreakOpen](./RogueForge%20详细手册/接口/破碎接口%20IBreakOpen.md)
+  - [刷新接口 IBuildingSpawner](./RogueForge%20详细手册/接口/刷新接口%20IBuildingSpawner.md)
+- [地图相关工具类 KMap](./RogueForge%20详细手册/工具类/地图相关工具类%20KMap.md)
 - 建筑例子
-	- [[四不像]]
-- [[RogueForge 错误日志]]
+  - [四不像](./RogueForge%20详细手册/建筑例子/四不像.md)
+- [RogueForge 错误日志](./RogueForge%20详细手册/RogueForge%20错误日志.md)
