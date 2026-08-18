@@ -1,0 +1,101 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+
+    <!-- Project Properties -->
+
+    <!-- Header -->
+    <AssemblyName>RogueForge</AssemblyName>
+    <PackageId>$(AssemblyName)</PackageId>
+    <Version>1.0.3</Version>
+    <Authors>bilibili-习羽Www</Authors>
+    <Company>习羽Www</Company>
+    <Copyright>bilibili-习羽Www</Copyright>
+
+    <!-- Title, Description, Tags -->
+    <Title>$(AssemblyName)</Title>
+    <Description>
+
+    </Description>
+    <PackageTags></PackageTags>
+    <PackageProjectUrl>bilibili-习羽Www</PackageProjectUrl>
+    <PackageReadmeFile></PackageReadmeFile>
+
+    <!-- 命令行直接 build csproj 时 $(SolutionDir) 未定义（显示 *Undefined*）导致 PostBuild 找不到 exe，
+         这里给默认值（相对 csproj 所在目录），让两种构建方式都能正确定位 .events\PluginBuildEvents.exe -->
+    <SolutionDir Condition="'$(SolutionDir)' == '' Or '$(SolutionDir)' == '*Undefined*'">..\</SolutionDir>
+
+    <!-- 抑制 netstandard 2.0/2.1 版本冲突警告（.ref\static\netstandard.dll 与 Assembly-CSharp 依赖的版本不同） -->
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+
+  </PropertyGroup>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <!-- IgnoreExitCode：PluginBuildEvents.exe 有时返回非零退出码（如找不到游戏目录），
+         不允许它阻塞构建；部署由 BuildAndDeploy.ps1 负责兜底 -->
+    <Exec Command="&quot;$(SolutionDir)\..\.events\PluginBuildEvents.exe&quot; &quot;$(TargetPath)&quot; &quot;Streets of Rogue&quot;" IgnoreExitCode="true" />
+  </Target>
+
+  <ItemGroup>
+    <!-- RogueForge 是纯库：排除插件入口（Main.cs）与 mod 专属代码（ObjectReal/），只编译 CustomBuildings/ -->
+    <Compile Remove="Main.cs" />
+    <Compile Remove="ObjectReal\**" />
+    <Compile Remove="Properties\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>..\..\.ref\Assembly-CSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="BepInEx">
+      <HintPath>..\..\.ref\static\BepInEx.dll</HintPath>
+    </Reference>
+    <Reference Include="com.unity.multiplayer-hlapi.Runtime">
+      <HintPath>..\..\.ref\static\com.unity.multiplayer-hlapi.Runtime.dll</HintPath>
+    </Reference>
+    <Reference Include="netstandard">
+      <HintPath>..\..\.ref\static\netstandard.dll</HintPath>
+    </Reference>
+    <Reference Include="RogueLibsCore">
+      <HintPath>..\..\.ref\RogueLibsCore.dll</HintPath>
+    </Reference>
+    <!-- 自定义建筑库源码已合并进本项目（CustomBuildings/ 目录直接参与编译，无需单独 dll） -->
+    <Reference Include="UnityEngine">
+      <HintPath>..\..\.ref\static\UnityEngine.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.AnimationModule">
+      <HintPath>..\..\.ref\static\UnityEngine.AnimationModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.AudioModule">
+      <HintPath>..\..\.ref\static\UnityEngine.AudioModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>..\..\.ref\static\UnityEngine.CoreModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>..\..\.ref\static\UnityEngine.InputLegacyModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.Physics2DModule">
+      <HintPath>..\..\.ref\static\UnityEngine.Physics2DModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>..\..\.ref\static\UnityEngine.UI.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>..\..\.ref\static\UnityEngine.UIModule.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="Properties\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+    <EmbeddedResource Update="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>

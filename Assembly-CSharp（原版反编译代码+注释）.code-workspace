@@ -1,0 +1,22 @@
+{
+	"folders": [
+		{
+			"name": "Assembly-CSharp（原版反编译代码+注释）",
+			"path": "../Assembly-CSharp（原版反编译代码+注释）"
+		},
+		{
+			"name": "RogueLibsCore",
+			"path": "../RogueLibsCore"
+		},
+		{
+			"name": "美化城市",
+			"path": "."
+		},
+		{
+			"path": "../丰富的城市系统"
+		}
+	],
+	"settings": {
+		"powershell.cwd": "美化城市"
+	}
+}

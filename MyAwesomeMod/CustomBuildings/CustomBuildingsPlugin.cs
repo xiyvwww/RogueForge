@@ -1,0 +1,795 @@
+using System;
+using System.Collections.Generic;
+using BepInEx;
+using BepInEx.Logging;
+using RogueLibsCore;
+using UnityEngine;
+using UnityEngine.UI;
+
+#nullable enable
+namespace RogueForge;
+
+/// <summary>
+/// CustomBuildings 的初始化与 Harmony patch 宿主。
+/// 注意：本类**不是**独立 BepInEx 插件（BepInEx 5 不会加载 mod 子目录里的 dll 为插件）。
+/// 由 mod 在 <see cref="BaseUnityPlugin.Awake"/> 中显式调用 <see cref="Initialize"/> 注册全部 patch，
+/// patch 方法体位于本类，但通过宿主插件的 RoguePatcher 注册。
+/// </summary>
+public static class CustomBuildingsPlugin
+{
+    /// <summary>库的日志源（Initialize 时从宿主插件获取）。</summary>
+    public static ManualLogSource Logger = null!;
+
+    /// <summary>是否已初始化（防止重复注册 patch）。</summary>
+    private static bool initialized;
+
+    /// <summary>
+    /// 左下角版本签名文本（显示在游戏版本号右下侧，追加在 RogueLibs 签名之后，不遮挡）。
+    /// 参考 RogueLibsCore：GameController.SetVersionText Postfix 往 versionText2.text 追加 "RL v4.0.0-rc.2"。
+    /// 修改此字符串即可自定义显示内容（例如改成你自己的 Mod 名和版本号）。
+    /// </summary>
+    public static string VersionSignature = "*RF v1.0.3";
+
+
+
+    /// <summary>
+    /// 初始化 CustomBuildings：注册全部 Harmony patch（prefab 注册、编辑器注入、网格重画、生成重建），
+    /// 并自动扫描 BepInEx/plugins 目录加载所有插件库 dll（多 dll 支持）。
+    /// 应在 mod 插件 Awake 中调用，且在 <see cref="CustomObjects.LoadFromAssembly"/> 之后。
+    /// </summary>
+    /// <param name="host">宿主 BepInEx 插件实例（mod 的插件）。</param>
+    public static void Initialize(BaseUnityPlugin host)
+    {
+        if (host == null) throw new ArgumentNullException(nameof(host));
+        if (initialized) return;
+        initialized = true;
+
+        // host.Logger 受保护，用反射读取（与 RoguePatcher 内部一致）
+        Logger = (ManualLogSource)typeof(BaseUnityPlugin).GetProperty("Logger",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)
+            .GetValue(host);
+
+        // 多 dll 支持：扫描 BepInEx/plugins 目录，统一加载所有尚未被 CLR 加载的插件库 dll
+        // （如用户新建的 TrashCan.dll / 纯类库 dll）中的 [RLSetup] 注册，让其中的自定义建筑在游戏中出现。
+        // 已被 BepInEx 作为插件加载的 dll（如 MyAwesomeMod.dll）由它们自己的 Awake 完成注册，这里跳过避免二次注册。
+        CustomObjects.LoadAllPluginLibraries();
+
+        // 关键：指定 patch 方法所在类型为本类（而非 host.GetType()），
+        // 这样 patch 方法保留在库中，通过宿主插件的 Harmony 实例注册。
+        RoguePatcher patcher = new RoguePatcher(host, typeof(CustomBuildingsPlugin));
+
+        Logger.LogInfo($"[CustomBuildings] Initialize: Registry 当前内容 = {CustomObjects.Names.Count} 个: [{string.Join(", ", CustomObjects.Names)}]");
+
+        // prefab 注册（GameResources.SetupDics 后把所有注册建筑注册进字典）
+        bool r1 = patcher.Postfix(typeof(GameResources), nameof(GameResources.SetupDics), "GameResources_SetupDics");
+
+        // objectVarDic 注册（BasicObject.Spawn 会查 objectVars.objectVarDic[name]，缺条目会 KeyNotFound 卡加载）
+        bool r2 = patcher.Postfix(typeof(ObjectVars), "Awake", "ObjectVars_Awake");
+
+        // 编辑器物件放置面板注入（2 参重载；3 参会 Sort 打乱，需 Postfix 重排）
+        bool r3 = patcher.Prefix(typeof(LevelEditor), nameof(LevelEditor.OpenObjectLoad), "LevelEditor_OpenObjectLoad", new Type[] { typeof(List<string>), typeof(List<string>) });
+       
+        bool r4 = patcher.Postfix(typeof(LevelEditor), nameof(LevelEditor.OpenObjectLoad), "LevelEditor_OpenObjectLoadPostfix", new Type[] { typeof(List<string>), typeof(List<string>) });
+
+        // 编辑器网格重画 + materialInsts 修复
+        bool r5 = patcher.Postfix(typeof(LevelEditor), nameof(LevelEditor.SetTileImage), "LevelEditor_SetTileImage");
+
+        // 物件生成入口（prefab 失效重建兜底）
+        bool r6 = patcher.Prefix(typeof(BasicObject), nameof(BasicObject.Spawn), "BasicObject_Spawn");
+
+        // 诊断钩子：Bed.Interact（验证"近距离才交互"机制——记录触发时玩家与床的距离）
+        bool r7 = patcher.Prefix(typeof(Bed), nameof(Bed.Interact), "Bed_Interact", new Type[] { typeof(Agent) });
+
+        // 名称显示修复：NameDB.GetName 找不到条目时返回 "E_"+名称（错误标记），
+        // Postfix 去掉错误前缀 "E_"（只去第一个），避免按钮/界面文本显示 E_#sym:xxx。
+        bool r8 = patcher.Postfix(typeof(NameDB), "GetName", "NameDB_GetName");
+
+        // 关卡加载完成（LoadLevel.SetupMore4 每关 100% 时调用）：
+        // 重置所有存活自定义建筑实例的容器填充状态并重新填充。
+        // 解决"退出回主菜单再重新进入显示空空如也"——重新进关卡会重新填充。
+        bool r9 = patcher.Postfix(typeof(LoadLevel), "SetupMore4", "LoadLevel_SetupMore4");
+
+        // 购买价格显示：原版 InvSlot.UpdateInvSlot 的价格显示分支硬编码了
+        // LoadoutMachine/ATMMachine 的 objectName，自定义建筑（如 RecycleBin）不在分支内 →
+        // 购买界面物品价格不显示（左上角显示 0/数量）。
+        // Postfix 检测自定义建筑购买界面，手动修正价格文本（$ + determineMoneyCost）。
+        // 注意：InvSlot 未被 RogueLibsPatcher DMD 重写（RogueLibs 用 Harmony patch 它），钩子有效。
+        bool r10 = patcher.Postfix(typeof(InvSlot), "UpdateInvSlot", "InvSlot_UpdateInvSlot");
+
+        // 购买回调：拦截 InvSlot.BuyItem（玩家右键点击商店物品触发的原版自动购买），
+        // 自定义建筑商店改为触发 IStore.OnItemBought(item, buyer) 用户回调——由用户端判断是否购买。
+        // 用户回调中调用 IStoreExtensions.PurchaseItem 执行购买（扣钱+移货）。
+        bool r11 = patcher.Prefix(typeof(InvSlot), "BuyItem", "InvSlot_BuyItem");
+
+        // 普通关卡建筑刷新：LoadLevel.SetupMore4 在每关 100%（物体环境生成完毕后）调用，
+        // 此时区块、玩家、StartingPoint/ExitPoint 全部就绪，最适合生成自定义建筑。
+        // 遍历所有实现 IBuildingSpawner 的注册建筑，调用 OnLevelSpawn 让自定义建筑像原版建筑一样在普通关卡自动出现。
+        bool r12 = patcher.Postfix(typeof(LoadLevel), "SetupMore4", "LoadLevel_SetupMore4_SpawnBuildings");
+
+        // 左下角版本签名：参考 RogueLibsCore，在 GameController.SetVersionText 后把 VersionSignature 追加到
+        // versionText2.text（左下角版本号文本）。追加在 RogueLibs 签名之后靠右显示，互不遮挡。
+        bool r13 = patcher.Postfix(typeof(GameController), "SetVersionText", "GameController_SetVersionText");
+
+        // 官方交互系统：注册自定义建筑交互提供者（RogueLibsPatcher hook 驱动，绕开 DMD）
+        // 它同时接管了高亮：RogueLibs 拦截 PlayfieldObject.interactable getter → IsInteractable()
+        // → 检测到我们的按钮 → 返回 true → 游戏原生高亮（无需强制高亮 hack）。
+        CustomObjectReal.RegisterInteractions();
+
+        // 注意：不再用 Harmony 钩子 patch PlayfieldObject/ObjectReal 的交互方法——
+        // 它们被 RogueLibsPatcher 的 DMD 技术重写，钩子打空不触发。
+        // 交互与高亮都改用 RogueLibs 官方 RogueInteractions.CreateProvider 机制。
+
+        Logger.LogInfo($"[RogueForge] 初始化完成，13 个 patch 注册结果: {r1}{r2}{r3}{r4}{r5}{r6}{r7}{r8}{r9}{r10}{r11}{r12}{r13}");
+        Logger.LogInfo($"[RogueForge] 如果遇到有关于RogueForge的报错，请先自行翻阅RogueForge错误手册。");
+    }
+
+    // ==================== Patch: GameController.SetVersionText（左下角版本签名） ====================
+    // 参考 RogueLibsCore：把自定义签名追加到左下角版本号文本 versionText2（GameController.SetVersionText 后）。
+    // RogueLibs 已把签名追加成 "SoR xx, RL v4.0.0-rc.2"；本方法在其后继续追加 " , MyAwesomeMod v0.1.0"，
+    // 文本靠右排在同一行末尾，不遮挡 RogueLibs 签名。幂等：已含签名则跳过（SetVersionText 可能被多次调用）。
+
+    /// <summary>[Postfix] GameController.SetVersionText — 在左下角版本号末尾追加自定义签名。</summary>
+    public static void GameController_SetVersionText(GameController __instance)
+    {
+        try
+        {
+            if (__instance == null || __instance.versionText2 == null) return;
+            Text t = __instance.versionText2;
+            if (string.IsNullOrEmpty(t.text) || t.text.Contains(VersionSignature)) return;   // 幂等：防重复追加
+            t.text = t.text + " , " + VersionSignature;
+        }
+        catch (Exception e)
+        {
+            Logger.LogWarning($"[CustomBuildings] GameController.SetVersionText 钩子异常: {e.Message}");
+        }
+    }
+
+    // ==================== Patch: InvSlot.BuyItem（购买回调拦截） ====================
+    // 原版：玩家右键点击商店物品 → BuyItem() → 自动扣钱+移货。
+    // 自定义建筑（IStore）：拦截原版自动购买，改为触发 OnItemBought(item, buyer) 回调，
+    // 由用户端判断是否购买（用户回调里调用 PurchaseItem 完成购买）。
+
+    /// <summary>[Prefix] InvSlot.BuyItem — 自定义建筑商店：拦截自动购买，触发用户回调。</summary>
+    public static bool InvSlot_BuyItem(InvSlot __instance)
+    {
+        try
+        {
+            // 仅拦截自定义建筑商店的购买
+            Agent agent = __instance.agent;
+            if (agent == null || __instance.slotType != "NPCChest") return true; // 非商店槽位，放行原版
+            if (agent.interactionHelper == null || agent.interactionHelper.interactionObjectReal == null) return true;
+            ObjectReal objReal = agent.interactionHelper.interactionObjectReal;
+            if (!(objReal is IStore store)) return true; // 非自定义建筑商店，放行原版
+
+            // 玩家选中的商品
+            InvItem item = __instance.item;
+            if (item == null || string.IsNullOrEmpty(item.invItemName)) return false; // 空物品，拦截
+
+            // 触发用户回调（由用户端判断是否购买；回调内可调 PurchaseItem 完成购买）
+            try
+            {
+                store.OnItemBought(item, agent);
+            }
+            catch (Exception eCb)
+            {
+                CustomBuildingsPlugin.Logger.LogWarning($"[{objReal.objectName}] OnItemBought 回调异常: {eCb.Message}");
+            }
+
+            return false; // 拦截原版自动购买（购买已由用户回调决定）
+        }
+        catch (Exception e)
+        {
+            CustomBuildingsPlugin.Logger.LogWarning($"[CustomBuildings] InvSlot.BuyItem 钩子异常: {e.Message}");
+            return true; // 异常时放行原版，避免卡死
+        }
+    }
+
+    // ==================== Patch: InvSlot.UpdateInvSlot（购买价格显示） ====================
+    // 原版价格显示分支硬编码 LoadoutMachine/ATMMachine，自定义建筑（IStore）不在分支内 →
+    // 购买界面物品价格不显示。此 Postfix 在 UpdateInvSlot 后修正价格文本。
+
+    
+    /// <summary>[Postfix] InvSlot.UpdateInvSlot — 自定义建筑购买界面修正价格显示（$ + determineMoneyCost）。</summary>
+    public static void InvSlot_UpdateInvSlot(InvSlot __instance)
+    {
+        try
+        {
+            // 仅处理 NPC 商店槽位（购买界面）
+            if (__instance == null || __instance.slotType != "NPCChest") return;
+            Agent agent = __instance.agent;
+            if (agent == null || agent.worldSpaceGUI == null || !agent.worldSpaceGUI.openedNPCChest) return;
+            if (agent.interactionHelper == null || agent.interactionHelper.interactionObjectReal == null) return;
+
+            // 仅处理实现 IStore 的自定义建筑
+            ObjectReal objReal = agent.interactionHelper.interactionObjectReal;
+            if (!(objReal is IStore)) return;
+
+            // 槽位对应商品：NPCChest 槽位的商品来自 invInterface.chestDatabase（ShowNPCChest 设置）
+            InvDatabase? chestDb = agent.mainGUI != null && agent.mainGUI.invInterface != null
+                ? agent.mainGUI.invInterface.chestDatabase : null;
+            if (chestDb == null || chestDb.InvItemList == null
+                || __instance.slotNumber < 0 || __instance.slotNumber >= chestDb.InvItemList.Count) return;
+            InvItem item = chestDb.InvItemList[__instance.slotNumber];
+            if (item == null || string.IsNullOrEmpty(item.invItemName)) return;
+
+            // 注意：放在所有 return 分支之前，保证自定义价格 override 的槽位也染色。
+            IStore store = (IStore)objReal;
+            Color? overrideColor = null;
+            if (__instance.backgroundImage2 != null)
+            {
+                switch (__instance.slotNumber)
+                {
+                    case 0: overrideColor = store.PriceOverrideColor1; break;
+                    case 1: overrideColor = store.PriceOverrideColor2; break;
+                    case 2: overrideColor = store.PriceOverrideColor3; break;
+                    case 3: overrideColor = store.PriceOverrideColor4; break;
+                    case 4: overrideColor = store.PriceOverrideColor5; break;
+                }
+                if (overrideColor != null)
+                {
+                    __instance.backgroundImage2.enabled = true;
+                    __instance.backgroundImage2.color = (Color)overrideColor;
+                }
+                
+            }
+
+            // 自定义价格覆盖：IStore 的 5 个价格变量对应商店 5 个槽位（slotNumber 0-4），
+            // 对应位置变量非空时，用该变量内容直接显示（可任意，如 "￥50"、"免费"、"x2"）。
+            // 注意：必须先于 itemValue==0 隐藏判断——免费商品（itemValue=0）也允许用 override 显示价格。
+            string? overrideText = null;
+            switch (__instance.slotNumber)
+            {
+                case 0: overrideText = store.PriceOverride1; break;
+                case 1: overrideText = store.PriceOverride2; break;
+                case 2: overrideText = store.PriceOverride3; break;
+                case 3: overrideText = store.PriceOverride4; break;
+                case 4: overrideText = store.PriceOverride5; break;
+            }
+            if (!string.IsNullOrEmpty(overrideText))
+            {
+                __instance.toolbarNumText.enabled = true;
+                __instance.toolbarNumText.text = overrideText;
+                return;
+            }
+
+            // 默认定价：交易类型=本建筑名（determineMoneyCost 默认分支：原价 + 关卡缩放）
+            int cost = objReal.determineMoneyCost(item, item.itemValue, objReal.objectName);
+            __instance.toolbarNumText.enabled = true;
+            __instance.toolbarNumText.text = "$" + cost;
+        }
+        catch (Exception e)
+        {
+            Logger.LogWarning($"[CustomBuildings] InvSlot.UpdateInvSlot 钩子异常: {e.Message}");
+        }
+    }
+
+    // ==================== Patch: LoadLevel.SetupMore4（建筑刷新） ====================
+    // 普通关卡（非关卡编辑器）建筑刷新：关卡加载 100%（SetupMore4）阶段调用，
+    // 此时区块、玩家、StartingPoint/ExitPoint 全部就绪。
+    // 遍历所有实现 IBuildingSpawner 的注册建筑，调用其 OnLevelSpawn 回调，
+    // 让自定义建筑像原版建筑一样在普通关卡中自动出现。
+    // 注意：prefab 在场景切换后可能被 Unity 销毁（objectPrefabDic 残留失效引用），
+    // 回调前必须确保 prefab 有效（失效则重建），否则拿不到模板实例会跳过刷新。
+    // 与 LoadLevel_SetupMore4（容器重置）是两个独立 Postfix，互不影响。
+
+    /// <summary>[Postfix] LoadLevel.SetupMore4 — 普通关卡：刷新所有实现 IBuildingSpawner 的自定义建筑。</summary>
+    public static void LoadLevel_SetupMore4_SpawnBuildings(LoadLevel __instance)
+    {
+        try
+        {
+            GameController gc = GameController.gameController;
+            // 仅服务端 + 非内存测试（见 LoadLevel 文档：gc.serverPlayer && !memoryTest）
+            if (gc == null || !gc.serverPlayer || __instance == null || __instance.memoryTest) return;
+            // 关卡编辑器 / 编辑器测试中不自动刷新（只在普通关卡生成）
+            if (gc.levelEditing || gc.wasLevelEditing) return;
+
+            foreach (KeyValuePair<string, CustomObjectMetadata> kv in CustomObjects.Registry)
+            {
+                CustomObjectMetadata meta = kv.Value;
+                if (meta == null || !typeof(IBuildingSpawner).IsAssignableFrom(meta.Type)) continue;
+
+                // 确保 prefab 有效（失效则重建），并取组件作为回调载体（不再依赖 LiveInstances）
+                CustomObjectReal? template = EnsurePrefabValid(meta);
+                if (template == null)
+                {
+                    Logger.LogWarning($"[{meta.Name}] LoadLevel.SetupMore4: 无法获取 prefab 模板实例，跳过刷新");
+                    continue;
+                }
+                if (template is IBuildingSpawner spawner)
+                {
+                    try
+                    {
+                        spawner.OnLevelSpawn(__instance);
+                        Logger.LogInfo($"[{meta.Name}] 普通关卡刷新回调已执行");
+                    }
+                    catch (Exception e)
+                    {
+                        Logger.LogError($"[{meta.Name}] OnLevelSpawn 回调异常: {e}");
+                    }
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Logger.LogWarning($"[CustomBuildings] LoadLevel.SetupMore4 建筑刷新钩子异常: {e.Message}");
+        }
+    }
+
+    // ==================== Patch: LoadLevel.SetupMore4 ====================
+    // 关卡加载完成（每关 100% 时调用）。重置所有存活自定义建筑实例的容器填充状态，
+    // 使重新进入关卡（包括退出回主菜单后再进）时容器重新填充，避免"空空如也"。
+
+    /// <summary>[Postfix] LoadLevel.SetupMore4 — 关卡加载完成，重置所有自定义建筑容器并重新填充。</summary>
+    public static void LoadLevel_SetupMore4()
+    {
+        try
+        {
+            List<CustomObjectReal> instances = new List<CustomObjectReal>(CustomObjectReal.LiveInstances);
+            foreach (CustomObjectReal custom in instances)
+            {
+                if (custom == null) continue;
+                // prefab 模板的 TryFillContainer 会自行跳过
+                custom.ResetAndRefillContainer();
+            }
+            if (instances.Count > 0)
+            {
+                Logger.LogInfo($"[CustomBuildings] LoadLevel.SetupMore4: 已重置 {instances.Count} 个自定义建筑容器");
+            }
+        }
+        catch (Exception e)
+        {
+            Logger.LogWarning($"[CustomBuildings] LoadLevel.SetupMore4 钩子异常: {e.Message}");
+        }
+    }
+
+    // ==================== Patch: NameDB.GetName ====================
+    // 名称查询失败时原版返回 "E_"+名称（错误标记），去掉前缀避免 UI 显示 E_#sym:xxx。
+    // 只去掉第一个 "E_"，不动其他内容。
+
+    /// <summary>[Postfix] NameDB.GetName — 只对自定义建筑按钮名去掉查询失败的错误前缀 "E_"（只去第一个）。
+    /// 原版用 "E_xxx" 作为"无文本"标记（如主菜单返回按钮 tooltip），UI 检测到会隐藏提示，
+    /// 所以不能全局剥除——只处理含 "RogueForge_" 的请求名，其余保持原样。</summary>
+    public static void NameDB_GetName(string myName, ref string __result)
+    {
+        try
+        {
+            if (myName != null && myName.Contains("RogueForge_")
+                && __result != null && __result.StartsWith("E_"))
+            {
+                __result = __result.Substring(13);
+            }
+        }
+        catch (Exception e)
+        {
+            Logger.LogWarning($"[CustomBuildings] NameDB.GetName 钩子异常: {e.Message}");
+        }
+    }
+
+    // ==================== Patch: Bed.Interact（诊断钩子） ====================
+    // 验证原版"近距离才交互"机制：玩家靠近床按 E 时，Bed.Interact 被调用。
+    // 记录触发时玩家与床的距离，确认交互距离限制的实际情况。
+
+    /// <summary>[Prefix] Bed.Interact(Agent) — 记录床交互触发情况。</summary>
+    public static void Bed_Interact(Bed __instance, Agent agent)
+    {
+        try
+        {
+            if (__instance == null) return;
+            // 只记录本地玩家触发的交互，避免 NPC 交互刷屏
+            bool isLocal = agent != null && agent.localPlayer;
+            string agentInfo = agent != null ? ("玩家" + agent.isPlayer) : "null";
+            float dist = -1f;
+            if (agent != null && __instance.tr != null)
+                dist = Vector2.Distance(agent.tr.position, __instance.tr.position);
+
+            Logger.LogInfo($"[CustomBuildings] Bed.Interact 触发! 触发者={agentInfo}, 本地玩家={isLocal}, "
+                + $"玩家到床中心距离={dist:F2}, 床位置={__instance?.tr?.position}");
+        }
+        catch (Exception e)
+        {
+            Logger.LogWarning($"[CustomBuildings] Bed.Interact 钩子异常: {e.Message}");
+        }
+    }
+
+    // ==================== Patch: GameResources.SetupDics ====================
+    // 为每个注册建筑克隆 prefab（默认克隆 Chair），移除 NetworkIdentity，注册进 objectPrefabDic/objectDic/objectVarDic。
+
+    /// <summary>[Postfix] GameResources.SetupDics — 注册所有自定义建筑 prefab。</summary>
+    public static void GameResources_SetupDics(GameResources __instance)
+    {
+        Logger.LogInfo($"[CustomBuildings] SetupDics Postfix 触发，Registry={CustomObjects.Names.Count} 个: [{string.Join(", ", CustomObjects.Names)}]");
+        foreach (KeyValuePair<string, CustomObjectMetadata> kv in CustomObjects.Registry)
+        {
+            string objectName = kv.Key;
+            CustomObjectMetadata meta = kv.Value;
+            try
+            {
+                if (__instance.objectPrefabDic.ContainsKey(objectName))
+                {
+                    Logger.LogInfo($"[CustomBuildings] SetupDics: {objectName} 已在 objectPrefabDic，跳过");
+                    continue;
+                }
+
+                if (!__instance.objectPrefabDic.ContainsKey(meta.CloneSource))
+                {
+                    Logger.LogError($"[CustomBuildings] 克隆源 {meta.CloneSource} 不存在（建筑 {objectName}），跳过注册");
+                    continue;
+                }
+
+                GameObject basePrefab = __instance.objectPrefabDic[meta.CloneSource];
+                GameObject newPrefab = UnityEngine.Object.Instantiate(basePrefab);
+                newPrefab.name = objectName;
+
+                ObjectReal old = newPrefab.GetComponent<ObjectReal>();
+                if (old != null) UnityEngine.Object.DestroyImmediate(old);
+                RemoveNetworkIdentity(newPrefab);
+
+                // 挂载建筑组件（用元数据里的类型）
+                CustomObjectReal nm = (CustomObjectReal)newPrefab.AddComponent(meta.Type);
+                nm.PrefabObject = newPrefab;
+
+                // 容器支持：prefab 加 InvDatabase 组件（打开容器界面/打碎掉落物品都需要它）。
+                // 只有 override 了 FillContainer 的子类才实际填充物品。
+                if (newPrefab.GetComponent<InvDatabase>() == null)
+                    newPrefab.AddComponent<InvDatabase>();
+
+                // 关键：prefab 必须跨场景存活，否则切场景后 Unity 会销毁它，
+                // 字典里留下失效引用，Spawn 时取用抛 NRE 中断加载协程（卡 37%）
+                UnityEngine.Object.DontDestroyOnLoad(newPrefab);
+
+                // 防幽灵：prefab 只是实例化模板，移出场景 + 禁用渲染
+                newPrefab.transform.position = new Vector3(9999f, 9999f, -9999f);
+                Renderer[] prefabRends = newPrefab.GetComponentsInChildren<Renderer>(true);
+                foreach (Renderer r in prefabRends)
+                {
+                    if (r != null) r.enabled = false;
+                }
+
+                GameController gc = GameController.gameController;
+                if (gc != null)
+                {
+                    gc.objectRealList.Remove(nm);
+                    gc.objectRealListWithDestroyed.Remove(nm);
+                }
+
+                __instance.objectPrefabDic.Add(objectName, newPrefab);
+                // objectDic 存的是小地图/编辑器图标 Sprite。优先用自定义建筑精灵（否则继承克隆源图标，如沙发）。
+                // QuestMarker.StartReal 用 gr.objectDic[objectName] 作为大地图标记图标。
+                // 注意：总是覆盖（不判断 ContainsKey）——SetupDics 可能触发多次，
+                // 第一次注册时自定义精灵可能未就绪（图集未初始化）导致存了沙发图标。
+                UnityEngine.Sprite? customIcon = meta.GetSprite()?.Sprite;
+                if (customIcon != null)
+                {
+                    __instance.objectDic[objectName] = customIcon;
+                    Logger.LogInfo($"[CustomBuildings] objectDic[{objectName}] 已更新为自定义精灵图标 (Sprite={customIcon.name})");
+                }
+                else if (!__instance.objectDic.ContainsKey(objectName) && __instance.objectDic.ContainsKey(meta.CloneSource))
+                {
+                    __instance.objectDic.Add(objectName, __instance.objectDic[meta.CloneSource]);
+                    Logger.LogInfo($"[CustomBuildings] objectDic[{objectName}] 使用克隆源图标 {meta.CloneSource}（自定义精灵为空）");
+                }
+
+                // objectVarDic 双保险注册
+                ObjectVars? objectVars = gc != null ? gc.objectVars : null;
+                if (objectVars == null) objectVars = UnityEngine.Object.FindObjectOfType<ObjectVars>();
+                if (objectVars != null && !objectVars.objectVarDic.ContainsKey(objectName))
+                {
+                    objectVars.objectVarDic.Add(objectName, new ObjectVar
+                    {
+                        initialSpawns = 0,
+                        shiftTowardWalls = true,
+                        // 四方向建筑：编辑器/流式世界支持四方向旋转放置（参考 ATM）
+                        fourDirection = meta.IsFourDirection,
+                    });
+                }
+
+                Logger.LogInfo($"[CustomBuildings] prefab 注册成功：{objectName}（克隆源 {meta.CloneSource}）");
+            }
+            catch (Exception e)
+            {
+                Logger.LogError($"[CustomBuildings] prefab 注册失败：{objectName} - {e}");
+            }
+        }
+    }
+
+    // ==================== Patch: ObjectVars.Awake ====================
+
+    /// <summary>[Postfix] ObjectVars.Awake — 注册所有建筑到 objectVarDic。</summary>
+    public static void ObjectVars_Awake(ObjectVars __instance)
+    {
+        foreach (string objectName in CustomObjects.Names)
+        {
+            if (__instance.objectVarDic.ContainsKey(objectName)) continue;
+            // 四方向建筑：ObjectVar 注册 fourDirection，支持编辑器四方向旋转放置
+            bool fourDir = CustomObjects.GetObject(objectName)?.IsFourDirection ?? false;
+            __instance.objectVarDic.Add(objectName, new ObjectVar
+            {
+                initialSpawns = 0,
+                shiftTowardWalls = true,
+                fourDirection = fourDir,
+            });
+        }
+    }
+
+    // ==================== Patch: LevelEditor.OpenObjectLoad ====================
+    // 把自定义建筑注入物件放置面板（2 参重载）。
+
+    /// <summary>[Prefix] LevelEditor.OpenObjectLoad(2参) — 注入所有注册建筑名。</summary>
+    public static void LevelEditor_OpenObjectLoad(LevelEditor __instance, List<string> dataList, List<string> dataList2)
+    {
+        if (dataList2 is null)
+        {
+            Logger.LogInfo($"[CustomBuildings] OpenObjectLoad Prefix: dataList2 为 null");
+            return;
+        }
+
+        // 只认物件放置面板：第二组列表必含 Window / ATMMachine
+        // （墙/地板/灯/居民/道具栏的 dataList2 都不含，不会误判）
+        bool isObjectPanel = dataList2.Contains("Window") || dataList2.Contains("ATMMachine");
+        Logger.LogInfo($"[CustomBuildings] OpenObjectLoad Prefix: dataList2.Count={dataList2.Count}, 含Window={dataList2.Contains("Window")}, 含ATMMachine={dataList2.Contains("ATMMachine")}, 判定为物件面板={isObjectPanel}, Registry={CustomObjects.Names.Count}个");
+        if (!isObjectPanel) return;
+
+        // 把每个未注册的建筑名插到 "------------------------" 分隔线之后（最终位置交给 Postfix 处理）
+        int insertIndex = dataList2.Count > 0 && dataList2[0] == "------------------------" ? 1 : 0;
+        foreach (string objectName in CustomObjects.Names)
+        {
+            if (dataList2.Contains(objectName)) continue;
+            dataList2.Insert(insertIndex, objectName);
+            insertIndex++;
+            Logger.LogInfo($"[CustomBuildings] 已插入建筑名: {objectName} @位置{insertIndex - 1}");
+        }
+        if (CustomObjects.Registry.Count > 0)
+            Logger.LogInfo($"[CustomBuildings] 已注入物件栏 {CustomObjects.Registry.Count} 个建筑");
+    }
+
+    /// <summary>[Postfix] LevelEditor.OpenObjectLoad(2参) — Sort 后把自定义建筑按钮挪到分隔线正下方 + 刷新滚动列表。</summary>
+    public static void LevelEditor_OpenObjectLoadPostfix(LevelEditor __instance)
+    {
+        List<ButtonData> list = __instance.buttonsDataLoad;
+
+        // 找到第一个分隔线位置
+        int separatorIndex = -1;
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (list[i].scrollingButtonType == "------------------------")
+            {
+                separatorIndex = i;
+                break;
+            }
+        }
+        if (separatorIndex == -1) return;
+
+        // 收集所有自定义建筑按钮，从原位置移除
+        List<ButtonData> customButtons = new List<ButtonData>();
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            if (CustomObjects.IsRegistered(list[i].scrollingButtonType))
+            {
+                customButtons.Add(list[i]);
+                list.RemoveAt(i);
+            }
+        }
+
+        // 依次插到分隔线正下方（保持注册顺序）
+        int insertIndex = separatorIndex + 1;
+        foreach (ButtonData button in customButtons)
+        {
+            list.Insert(insertIndex, button);
+            insertIndex++;
+        }
+
+        // 让滚动列表按新顺序重建，并回到顶部，保证一打开就能看到
+        __instance.scrollerControllerLoad.RefreshMenuData(true);
+    }
+
+    // ==================== Patch: LevelEditor.SetTileImage ====================
+    // 原版 SetTileImage 对未知物件名会画成第 0 号贴图（地板），这里强制重画 + 材质修复。
+
+    /// <summary>材质修复缓存（按建筑名）。</summary>
+    private static readonly HashSet<string> materialFixed = new HashSet<string>();
+
+    /// <summary>[Postfix] LevelEditor.SetTileImage — 自定义建筑网格重画。</summary>
+    public static void LevelEditor_SetTileImage(LevelEditor __instance, LevelEditorTile myTile)
+    {
+        if (myTile == null) return;
+        if (myTile.tileType == "Objects" && CustomObjects.IsRegistered(myTile.tileName))
+            Logger.LogInfo($"[CustomBuildings] SetTileImage: 命中自定义建筑 {myTile.tileName}，重画");
+        if (myTile == null || myTile.tileType != "Objects" || myTile.tileMap == null) return;
+        if (!CustomObjects.IsRegistered(myTile.tileName)) return;
+        string objectName = myTile.tileName;
+
+        tk2dSpriteCollectionData mapCollection = myTile.tileMap.Editor__SpriteCollection;
+        tk2dSpriteCollectionData source = __instance.objectSprites;
+
+        // 图集不同实例时切换 tileMap 图集，保证 spriteId 对得上
+        if (mapCollection != null && source != null && mapCollection != source)
+        {
+            myTile.tileMap.Editor__SpriteCollection = source;
+            mapCollection = source;
+        }
+        if (mapCollection == null) return;
+
+        tk2dSpriteCollectionData inst = mapCollection.inst;
+        int id = mapCollection.GetSpriteIdByName(objectName);
+        if (id <= 0 || inst == null) return;
+
+        // materialInsts 修复（RogueLibs.AddDefinition 扩容后缓存未同步，新槽位材质无效）
+        if (!materialFixed.Contains(objectName))
+        {
+            try
+            {
+                if (inst.materialInsts == null || inst.materialInsts.Length < inst.materials.Length)
+                {
+                    Material[]? old = inst.materialInsts;
+                    inst.materialInsts = new Material[inst.materials.Length];
+                    for (int i = 0; i < inst.materials.Length; i++)
+                    {
+                        if (old != null && i < old.Length) inst.materialInsts[i] = old[i];
+                        else if (inst.materials[i] != null) inst.materialInsts[i] = UnityEngine.Object.Instantiate(inst.materials[i]);
+                    }
+                }
+                tk2dSpriteDefinition def = inst.spriteDefinitions[id];
+                if (def.material != null && def.materialId >= 0 && def.materialId < inst.materialInsts.Length)
+                {
+                    inst.materialInsts[def.materialId] = UnityEngine.Object.Instantiate(def.material);
+                    def.materialInst = inst.materialInsts[def.materialId];
+                }
+                materialFixed.Add(objectName);
+            }
+            catch (Exception e)
+            {
+                Logger.LogError($"[CustomBuildings] materialInsts 修复失败：{objectName} - {e}");
+            }
+        }
+
+        myTile.tileMap.SetTile((int)myTile.posX, (int)myTile.posY, 0, id);
+        // 必须用 ForceBuild：编辑器模式下默认 Build 可能跳过网格重建
+        myTile.tileMap.ForceBuild();
+        myTile.tileFilled = true;
+    }
+
+    // ==================== Patch: BasicObject.Spawn ====================
+    // prefab 失效（场景切换被销毁）时从克隆源重建。
+
+    /// <summary>[Prefix] BasicObject.Spawn — 自定义建筑 prefab 失效重建兜底。</summary>
+    public static void BasicObject_Spawn(BasicObject __instance, SpawnerBasic spawner, string objectRealName, Vector2 myPos, Vector2 myScale, Chunk startingChunkReal)
+    {
+        if (!CustomObjects.IsRegistered(objectRealName)) return;
+        CustomObjectMetadata meta = CustomObjects.GetObject(objectRealName)!;
+
+        // 四方向建筑默认朝北：原版 BasicObject.Spawn 在无方向（spawner.direction==""）时会
+        // 把 direction 固定为 "S"（见 spawnDirection switch 默认分支），且 faceAwayFromWalls
+        // 逻辑会尝试自动靠墙定向。这里在 Spawn 前置把空方向设为 "N"，让四方向建筑默认显示北向图，
+        // 同时跳过 faceAwayFromWalls 自动定向（自定义建筑不依赖它）。
+        if (meta.IsFourDirection && string.IsNullOrEmpty(spawner.direction))
+        {
+            spawner.direction = "N";
+        }
+
+        // prefab 失效重建兜底（与 SetupMore3_3 共用同一方法）
+        EnsurePrefabValid(meta);
+    }
+
+    /// <summary>
+    /// 确保指定建筑类型的 prefab 在 objectPrefabDic 中有效；失效（场景切换被销毁）时从克隆源重建。
+    /// 返回有效的 prefab 上的 <see cref="CustomObjectReal"/> 组件（供接口回调载体或生成使用）。
+    /// </summary>
+    /// <param name="meta">建筑元数据。</param>
+    /// <returns>有效的 CustomObjectReal 组件；失败返回 null。</returns>
+    private static CustomObjectReal? EnsurePrefabValid(CustomObjectMetadata meta)
+    {
+        GameController gc = GameController.gameController;
+        if (gc == null || meta == null) return null;
+        GameResources? gr = gc.gameResources;
+        if (gr == null || gr.objectPrefabDic == null) return null;
+
+        string objectRealName = meta.Name;
+        GameObject? existing = gr.objectPrefabDic.ContainsKey(objectRealName) ? gr.objectPrefabDic[objectRealName] : null;
+        if (existing != null)
+        {
+            CustomObjectReal? comp = existing.GetComponent<CustomObjectReal>();
+            if (comp != null) return comp;
+        }
+
+        // prefab 已失效（场景切换被销毁）或组件丢失 → 从克隆源重建
+        if (!gr.objectPrefabDic.ContainsKey(meta.CloneSource))
+        {
+            Logger.LogError($"[CustomBuildings] 克隆源 {meta.CloneSource} 不存在（建筑 {objectRealName}），无法重建 prefab");
+            return null;
+        }
+        Logger.LogWarning($"[CustomBuildings] prefab 已失效（场景切换被销毁），从 {meta.CloneSource} 重建：{objectRealName}");
+        try
+        {
+            GameObject basePrefab = gr.objectPrefabDic[meta.CloneSource];
+            GameObject newPrefab = UnityEngine.Object.Instantiate(basePrefab);
+            newPrefab.name = objectRealName;
+
+            ObjectReal old = newPrefab.GetComponent<ObjectReal>();
+            if (old != null) UnityEngine.Object.DestroyImmediate(old);
+            RemoveNetworkIdentity(newPrefab);
+
+            CustomObjectReal nm = (CustomObjectReal)newPrefab.AddComponent(meta.Type);
+            nm.PrefabObject = newPrefab;
+
+            // 容器支持：重建的 prefab 也要加 InvDatabase（与 SetupDics 注册一致）
+            if (newPrefab.GetComponent<InvDatabase>() == null)
+                newPrefab.AddComponent<InvDatabase>();
+
+            if (gc != null)
+            {
+                gc.objectRealList.Remove(nm);
+                gc.objectRealListWithDestroyed.Remove(nm);
+            }
+
+            UnityEngine.Object.DontDestroyOnLoad(newPrefab);
+
+            // 防幽灵：移出场景 + 禁用渲染
+            newPrefab.transform.position = new Vector3(9999f, 9999f, -9999f);
+            Renderer[] prefabRends = newPrefab.GetComponentsInChildren<Renderer>(true);
+            foreach (Renderer r in prefabRends)
+            {
+                if (r != null) r.enabled = false;
+            }
+
+            gr.objectPrefabDic[objectRealName] = newPrefab;
+            // 重建后恢复自定义图标（与 SetupDics 注册一致，避免回退到克隆源 Chair 图标）
+            UnityEngine.Sprite? rebuildIcon = meta.GetSprite()?.Sprite;
+            if (rebuildIcon != null)
+            {
+                gr.objectDic[objectRealName] = rebuildIcon;
+            }
+            else if (gr.objectDic.ContainsKey(objectRealName))
+            {
+                gr.objectDic[objectRealName] = gr.objectDic[meta.CloneSource];
+            }
+
+            Logger.LogInfo($"[CustomBuildings] prefab 重建成功：{objectRealName}");
+            return nm;
+        }
+        catch (Exception e)
+        {
+            Logger.LogError($"[CustomBuildings] prefab 重建失败：{objectRealName} - {e}");
+            return null;
+        }
+    }
+
+    // ==================== 工具 ====================
+
+    /// <summary>移除 GameObject 上的 NetworkIdentity 组件（反射，无需编译期类型引用）。
+    /// prefab 被改造后 NetworkIdentity 状态非法，Instantiate 克隆时其 Awake 会自我销毁。</summary>
+    private static void RemoveNetworkIdentity(GameObject go)
+    {
+        try
+        {
+            if (go == null) return;
+            System.Type? niType = typeof(UnityEngine.Component).Assembly.GetType("UnityEngine.Networking.NetworkIdentity")
+                ?? System.Type.GetType("UnityEngine.Networking.NetworkIdentity, UnityEngine.Networking")
+                ?? System.Type.GetType("Mirror.NetworkIdentity, com.unity.multiplayer-hlapi.Runtime")
+                ?? System.Type.GetType("Mirror.NetworkIdentity, Mirror");
+            if (niType == null)
+            {
+                // 兜底：按名字找组件
+                foreach (UnityEngine.Component c in go.GetComponents<UnityEngine.Component>())
+                {
+                    if (c != null && c.GetType().Name == "NetworkIdentity")
+                    {
+                        UnityEngine.Object.DestroyImmediate(c);
+                        Logger.LogInfo($"[CustomBuildings] 已移除 prefab 的 {c.GetType().FullName}");
+                        return;
+                    }
+                }
+                return;
+            }
+            UnityEngine.Object? ni = go.GetComponent(niType);
+            if (ni != null)
+            {
+                UnityEngine.Object.DestroyImmediate(ni);
+                Logger.LogInfo($"[CustomBuildings] 已移除 prefab 的 {niType.FullName}（防 Instantiate 时自我销毁）");
+            }
+        }
+        catch (Exception e)
+        {
+            Logger.LogWarning($"[CustomBuildings] RemoveNetworkIdentity 异常: {e.Message}");
+        }
+    }
+}

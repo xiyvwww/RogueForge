@@ -1,0 +1,33 @@
+{
+  "name": "rogueforge-builder",
+  "displayName": "RogueForge Builder",
+  "description": "右键一键构建并部署 RogueForge + MyAwesomeMod",
+  "version": "1.0.0",
+  "publisher": "local-dev",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:rogueforge.buildAndDeploy"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "rogueforge.buildAndDeploy",
+        "title": "RogueForge: 一键构建并部署"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "rogueforge.buildAndDeploy",
+          "group": "2_rogueforge@1"
+        }
+      ]
+    }
+  }
+}

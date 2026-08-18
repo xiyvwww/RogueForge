@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "andrea-novel-helper": {
+      "type": "http",
+      "url": "http://127.0.0.1:13306/mcp"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+把你自己写的建筑 dll 放进本目录（如 TrashCan.dll），运行 BuildAndDeploy.ps1 时会一并复制到游戏 BepInEx/plugins，由 RogueForge 自动扫描加载（多 dll 支持）。
+
+要求（两种写法都可以）：
+1. 纯类库（推荐）：项目引用 .ref\RogueForge.dll，只写建筑类（如 `[ObjectName("TrashCan")] class TrashCan : CustomObjectReal` + `[RLSetup] Setup()`），不要写 BepInEx 插件入口类。
+2. 带插件入口：给插件类一个【唯一】的 BepInPlugin GUID，并在 Awake 里调用 RogueLibs.LoadFromAssembly()（或 RogueForge.CustomObjects.LoadFromAssembly()）注册自己。
+
+注意：如果多个 dll 用了相同的 BepInPlugin GUID，BepInEx 只激活其中一个插件——被跳过的 dll 由 RogueForge 兜底扫描注册，但建议每个 dll 使用不同的 GUID。
