@@ -22,7 +22,9 @@ Chunk? GetEndingChunk();  // 获取关卡出口区块
 
 如下：
 ```
-List<Chunk> GetChunksByDescription(string description); //获取关卡内所有该类型的区块
+List<Chunk> GetChunksExceptExitAndEntrance(); // 获取关卡内除了出口和入口以外的所有区块。
+
+List<Chunk> GetChunksByDescription(string description); //获取关卡内所有该类型的区块。
 Chunk? GetChunkByID(int chunkID);
 ```
 
@@ -34,17 +36,21 @@ Chunk? GetChunkByID(int chunkID);
 ```
 /// 获取指定区块内的所有合法空地坐标（遍历瓦片，严格校验）。
 /// spacing：采样间距（默认 0.64，即一个瓦片格）。
-/// Exclude_owner：排除有所有者的区块
-/// Exclude_prison：排除监狱区块
-/// NearWater：是否包含水附近的区块
-List<Vector2> GetAllEmptySpotsInChunk(Chunk? chunk, float spacing = 0.64f);
+/// Exclude_owner：排除有所有者的位置
+/// Exclude_prison：排除监狱位置
+/// NearWater：是否包含水附近的位置
+/// Exclude_NonOwner：是否排除没有所有者的位置
+/// edgeMargin：边缘排除范围
+List<Vector2> GetAllEmptySpotsInChunk(Chunk? chunk, float spacing = 0.64, fExclude_owner = false, bool Exclude_prison = false, bool NearWater = false,Exclude_NonOwner = false, edgeMargin = 0.64f);
 
 /// 在指定的区块内查找一个随机空地（严格校验墙、水、物体重叠）。
 /// maxRetries：最大查询次数
-/// Exclude_owner：排除有所有者的区块
-/// Exclude_prison：排除监狱区块
-/// NearWater：是否包含水附近的区块
-Vector2 FindEmptySpotByChunk(Chunk targetChunk, int maxRetries = 100,bool Exclude_owner = false, bool Exclude_prison = false, bool NearWater = false);
+/// Exclude_owner：排除有所有者的位置
+/// Exclude_prison：排除监狱位置
+/// NearWater：是否包含水附近的位置
+/// Exclude_NonOwner：是否排除没有所有者的位置
+/// edgeMargin：边缘排除范围
+Vector2 FindEmptySpotByChunk(Chunk targetChunk, int maxRetries = 100,bool Exclude_owner = false, bool Exclude_prison = false, bool NearWater = false, Exclude_NonOwner = false, edgeMargin = 0.64f);
 ```
 
 # 四、建筑相关
@@ -78,8 +84,6 @@ static List<ObjectReal> GetBuildingsByName(string objectName);
 /// 获取特定区块（Chunk）内的所有建筑。
 static List<ObjectReal> GetBuildingsInChunk(int chunkID);
 
-/// 获取特定区块（Chunk）内的所有建筑。
-static List<ObjectReal> GetBuildingsInChunk(int chunkID)
 ```
 
 # 五、实验性工具

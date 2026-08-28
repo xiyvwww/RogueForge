@@ -15,6 +15,18 @@
                 "panel": "shared",
                 "clear": true
             }
+        },
+        {
+            "label": "RogueForge: Release 构建（仅编译库，不部署）",
+            "type": "shell",
+            "command": "dotnet build \"${workspaceFolder}\\MyAwesomeMod\\Mod.csproj\" -c Release --nologo",
+            "problemMatcher": [],
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            }
         }
     ]
 }

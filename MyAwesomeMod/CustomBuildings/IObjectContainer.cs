@@ -78,11 +78,11 @@ public static class IObjectContainerExtensions
         {
             obj.ShowChest();
             container.OnContainerOpened();
-            CustomBuildingsPlugin.Logger?.LogInfo($"[{obj.objectName}] 容器界面已打开");
+            CustomBuildingsPlugin.LogInfo($"[{obj.objectName}] 容器界面已打开");
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger?.LogWarning($"[{obj.objectName}] OpenContainer 异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning($"[{obj.objectName}] OpenContainer 异常: {e.Message}");
         }
     }
 }

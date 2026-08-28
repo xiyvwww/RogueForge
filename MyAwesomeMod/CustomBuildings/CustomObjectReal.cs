@@ -79,6 +79,44 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
     /// <summary>免费商品（itemValue == 0）槽位的显示颜色（null = 用 IStoreExtensions.DefaultFreeItemColor）。</summary>
     public virtual UnityEngine.Color? FreeItemColor => null;
 
+    /// <summary>
+    /// 确保建筑拥有光源（类似垃圾桶）。若已存在则跳过。
+    /// </summary>
+    private void EnsureLightSource()
+    {
+        if (lightReal != null) return;
+        if (gc == null || gc.spawnerMain == null) return;
+        try
+        {
+            LightReal newLight = gc.spawnerMain.SpawnLightReal(tr.position, this, 1);
+            if (newLight != null)
+            {
+                newLight.tr.localScale = new Vector3(3f, 3f, 1f);
+                lightReal = newLight;
+            }
+        }
+        catch (Exception e)
+        {
+            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] EnsureLightSource 异常: {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 手动控制建筑光源开关（由子类/外部代码自行调用）。
+    /// </summary>
+    public void SetBuildingLight(bool enabled)
+    {
+        if (lightReal == null) return;
+        try
+        {
+            lightReal.gameObject.SetActive(enabled);
+        }
+        catch (Exception e)
+        {
+            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] SetBuildingLight 异常: {e.Message}");
+        }
+    }
+
     // ==================== IObjectContainer 默认实现（子类可 override 需要的，无需写默认值） ====================
     // 接口 IObjectContainer：FillContainer 必须由实现类实现（TryFillContainer 通过接口调用）；
     // CanOpenContainer / OnContainerOpened / GetContainerItems / SetContainerItems 由基类提供默认实现。
@@ -130,7 +168,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] SetContainerItems 异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] SetContainerItems 异常: {e.Message}");
         }
     }
 
@@ -159,7 +197,10 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogError($"[{this.ObjectName}] base.Awake 异常: {e}");
+            if (GameController.gameController == null)
+                CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] base.Awake 跳过（启动期 prefab 克隆，gc 未就绪，属正常现象）");
+            else
+                CustomBuildingsPlugin.LogError($"[{this.ObjectName}] base.Awake 异常: {e}");
         }
         try
         {
@@ -169,7 +210,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] 设置 objectName 失败: {e.Message}");
+            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 设置 objectName 失败: {e.Message}");
         }
         if (awakeOk)
         {
@@ -179,7 +220,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             }
             catch (Exception e)
             {
-                CustomBuildingsPlugin.Logger.LogError($"[{this.ObjectName}] SetVars 异常: {e}");
+                CustomBuildingsPlugin.LogError($"[{this.ObjectName}] SetVars 异常: {e}");
             }
 
             // 实例脱离对象池，防止被回收/销毁
@@ -206,9 +247,11 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogError($"[{this.ObjectName}] base.Start 异常: {e}");
+            CustomBuildingsPlugin.LogError($"[{this.ObjectName}] base.Start 异常: {e}");
         }
         this.ApplyAppearanceAndColliders("Start");
+        this.EnsureLightSource();
+        this.SetBuildingLight(true); // 一开始先发光
         this.TryFillContainer();
         this.TrySpawnMinimapMarker();
     }
@@ -277,7 +320,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             h.AddImplicitButton(BUY_BUTTON, m =>
             {
                 store.OpenBuyChest((ObjectReal)m.Object, m.Agent);   // 扩展方法：接口层提供打开购买窗口
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] 隐式购买触发，打开购买界面");
+                CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] 隐式购买触发，打开购买界面");
             });
             return;
         }
@@ -289,7 +332,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             h.AddImplicitButton(OPEN_BUTTON, m =>
             {
                 container.OpenContainer((ObjectReal)m.Object, m.Agent);   // 扩展方法：接口层提供打开容器
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] Open 触发，打开容器界面");
+                CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] Open 触发，打开容器界面");
             });
             return;
         }
@@ -323,7 +366,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         this._delayedAction = onComplete;
         this._delayedBarType = barType;
         base.StartCoroutine(base.Operating(agent, null, delay, makeNoise: true, barType));
-        CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] 延迟操作开始: {barType} ({delay}s)");
+        CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] 延迟操作开始: {barType} ({delay}s)");
     }
 
     /// <summary>操作进度条走完回调：处理黑客入侵完成 + 延迟操作（参考 ATM 的 FinishedOperating → CollectPart）。</summary>
@@ -342,7 +385,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             }
             catch (Exception e)
             {
-                CustomBuildingsPlugin.Logger.LogError($"[{this.ObjectName}] OnHackingComplete 回调异常: {e}");
+                CustomBuildingsPlugin.LogError($"[{this.ObjectName}] OnHackingComplete 回调异常: {e}");
             }
             return;
         }
@@ -359,7 +402,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             }
             catch (Exception e)
             {
-                CustomBuildingsPlugin.Logger.LogError($"[{this.ObjectName}] 延迟操作回调异常: {e}");
+                CustomBuildingsPlugin.LogError($"[{this.ObjectName}] 延迟操作回调异常: {e}");
             }
         }
     }
@@ -400,13 +443,13 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         {
             if (GameController.gameController == null)
             {
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] TryFillContainer: gc 未就绪，跳过");
+                CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] TryFillContainer: gc 未就绪，跳过");
                 return;
             }
             // prefab 模板跳过
             if (this.PrefabObject != null && this.gameObject == this.PrefabObject)
             {
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] TryFillContainer: 是 prefab 模板，跳过");
+                CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] TryFillContainer: 是 prefab 模板，跳过");
                 return;
             }
 
@@ -420,17 +463,17 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             }
             catch (Exception eL)
             {
-                CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] 读取关卡号失败: {eL.Message}");
+                CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 读取关卡号失败: {eL.Message}");
             }
             if (this._containerFilled && this._containerFilledLevel == curLevel)
             {
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] TryFillContainer: 本关卡已填充过，跳过 (curLevel={curLevel})");
+                CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] TryFillContainer: 本关卡已填充过，跳过 (curLevel={curLevel})");
                 return;
             }
             // 新关卡（或首次）：重置标志允许重新填充
             this._containerFilled = false;
             this._containerFilledLevel = curLevel;
-            CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] TryFillContainer: 实例处理开始, gc.serverPlayer={this.gc?.serverPlayer}, objectInvDatabase={(base.objectInvDatabase != null ? "已有" : "null")}");
+            CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] TryFillContainer: 实例处理开始, gc.serverPlayer={this.gc?.serverPlayer}, objectInvDatabase={(base.objectInvDatabase != null ? "已有" : "null")}");
 
             // 确保 InvDatabase 组件存在（prefab 注册时已加，此处兜底）
             if (base.objectInvDatabase == null)
@@ -439,7 +482,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
                 if (base.objectInvDatabase == null)
                 {
                     base.objectInvDatabase = this.gameObject.AddComponent<InvDatabase>();
-                    CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] TryFillContainer: 动态添加了 InvDatabase");
+                    CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] TryFillContainer: 动态添加了 InvDatabase");
                 }
             }
 
@@ -449,7 +492,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             if (!base.objectInvDatabase.createdInventory)
             {
                 base.objectInvDatabase.CreateInventory();
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] TryFillContainer: 手动调用 CreateInventory 初始化物品栏");
+                CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] TryFillContainer: 手动调用 CreateInventory 初始化物品栏");
             }
 
             // 标记为真容器：空箱后变"已空"不可交互 + 打碎可掉落（canSpill 默认 true）
@@ -459,7 +502,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             // 仅服务端填充，避免多人重复
             if (this.gc == null || !this.gc.serverPlayer)
             {
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] TryFillContainer: 非服务端，跳过填充");
+                CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] TryFillContainer: 非服务端，跳过填充");
                 return;
             }
 
@@ -467,23 +510,24 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             if (base.objectInvDatabase.InvItemList != null && base.objectInvDatabase.InvItemList.Count > 0)
             {
                 base.objectInvDatabase.DestroyAllItems();
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] TryFillContainer: 已清空上关残留物品");
+                CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] TryFillContainer: 已清空上关残留物品");
             }
 
             this._containerFilled = true;
+            // 阻止原版 FillChest：关卡加载时 LoadLevel.SetupMore4_2 会遍历所有 objectInvDatabase 非空
+            // 的物体调用 FillChest()，给容器加随机垃圾+金钱。设置在 FillContainer 之前：
+            // 即使 FillContainer 抛异常（如实现类取空列表越界），原版垃圾/金钱也不会混入容器。
+            base.objectInvDatabase.filledChestStreaming = true;
             if (this is IObjectContainer container)
             {
                 container.FillContainer(base.objectInvDatabase);
-                // 阻止原版 FillChest：关卡加载时 LoadLevel.SetupMore4_2 会遍历所有 objectInvDatabase 非空
-                // 的物体调用 FillChest()，给容器加随机垃圾+金钱。设置 filledChestStreaming 让它第一行 return。
-                base.objectInvDatabase.filledChestStreaming = true;
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] TryFillContainer: 填充完成, 物品数={base.objectInvDatabase?.InvItemList?.Count}, 已阻止原版 FillChest");
+                CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] TryFillContainer: 填充完成, 物品数={base.objectInvDatabase?.InvItemList?.Count}, 已阻止原版 FillChest");
             }
             
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] 填充容器异常: {e}");
+            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 填充容器异常: {e}");
         }
     }
 
@@ -496,12 +540,14 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             this._containerFilled = false;
             this._containerFilledLevel = -1;
             this.TryFillContainer();
+            this.EnsureLightSource();
+            this.SetBuildingLight(true); // 新关卡默认发光
             // 新关卡：小地图标记随旧场景销毁，需重建（若实现 IMinimapTeleportable）
             this.TrySpawnMinimapMarker();
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] ResetAndRefillContainer 异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] ResetAndRefillContainer 异常: {e.Message}");
         }
     }
 
@@ -514,6 +560,11 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
 
     /// <summary>是否已创建过小地图标记（防重复创建）。</summary>
     private bool _minimapMarkerSpawned;
+    /// <summary>是否正在创建小地图标记（防重复启动协程）。</summary>
+    private bool _minimapMarkerSpawning;
+
+
+
 
     /// <summary>
     /// 若本建筑实现 <see cref="IMinimapTeleportable"/>，则创建小地图/大地图标记（参考 ATM），
@@ -524,76 +575,122 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
     {
         try
         {
-            // 仅处理实现小地图传送接口的建筑
             if (!(this is IMinimapTeleportable))
             {
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] TrySpawnMinimapMarker: 未实现 IMinimapTeleportable，跳过");
+                CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] TrySpawnMinimapMarker: 未实现 IMinimapTeleportable，跳过");
                 return;
             }
 
-            // prefab 模板 / gc 未就绪跳过
             if (this.PrefabObject != null && this.gameObject == this.PrefabObject)
             {
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] TrySpawnMinimapMarker: 是 prefab 模板，跳过");
+                CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] TrySpawnMinimapMarker: 是 prefab 模板，跳过");
                 return;
             }
-            if (GameController.gameController == null)
+            if (GameController.gameController == null || this.gc == null)
             {
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] TrySpawnMinimapMarker: gc 未就绪，跳过");
-                return;
-            }
-            if (this.gc == null)
-            {
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] TrySpawnMinimapMarker: this.gc 为 null，跳过");
+                CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] TrySpawnMinimapMarker: gc 未就绪，跳过");
                 return;
             }
 
-            // 注意：不做 loadComplete 检查！ATM 在 Start 中无条件调用 MinimapDisplay()，
-            // 靠 QuestMarker.Start → WaitToStart 自行等待玩家/父物体就绪。
-            // 若此处因 loadComplete=false 跳过，而 SetupMore4 触发时 loadComplete 仍为 false，
-            // 标记将永远不会创建（日志已证实：SetupMore4 时 loadComplete=false）。
-            // 创建失败（异常/prefab 未就绪）由 try-catch + 不置位标志兜底，SetupMore4 会重试。
-
-            // 已有标记（含上一关卡遗留的）则跳过
-            if (this._minimapMarkerSpawned || base.nonQuestObjectMarker != null)
+            if (this._minimapMarkerSpawning)
             {
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] TrySpawnMinimapMarker: 已有标记，跳过 (_spawned={this._minimapMarkerSpawned}, marker={(base.nonQuestObjectMarker != null)})");
                 return;
             }
 
-            // 参考 ATM.Start()：创建 NonQuestObject 类型标记（小地图 + 大地图各一个）
-            CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] TrySpawnMinimapMarker: 调用 MinimapDisplay()");
-            this.MinimapDisplay();
-
-            // 强制标记已发现：玩家无需接近即可在大地图上点击传送
-            if (base.nonQuestObjectMarker != null)
+            // 已有可用标记则跳过；标记存在但未就绪/已损坏时继续走协程修复
+            if (this._minimapMarkerSpawned &&
+                base.nonQuestObjectMarker != null &&
+                base.nonQuestObjectMarker.reallyStarted &&
+                base.nonQuestObjectMarker.smallImage != null &&
+                base.nonQuestObjectMarker.smallImage2 != null)
             {
-                base.nonQuestObjectMarker.playerSeen = true;
-                this._minimapMarkerSpawned = true;   // 仅创建成功才置位，失败允许下次重试
-
-                // 强制修正标记图标：QuestMarker.StartReal 从 gr.objectDic[objectName] 读取 nonQuestSprite，
-                // 但 objectDic 的更新可能与标记初始化存在时序差（可能读到克隆源 Chair 的图标）。
-                // StartReal 在异步协程中执行，会覆盖立即设置的 nonQuestSprite，
-                // 因此用协程等标记 reallyStarted 后再强制覆盖图标。
-                RogueLibsCore.RogueSprite? rogueSprite = CustomObjectMetadata.Get(this.GetType()).GetSprite();
-                if (rogueSprite?.Sprite != null)
-                {
-                    UnityEngine.Sprite icon = rogueSprite.Sprite;
-                    base.StartCoroutine(ForceMarkerIconWhenReady(base.nonQuestObjectMarker, icon));
-                }
-            }
-            else
-            {
-                // 创建失败（prefab 未就绪/非 ObjectReal 类型等）：不置位，等 SetupMore4 重试
-                CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] TrySpawnMinimapMarker: MinimapDisplay 未生成标记（nonQuestObjectMarker 为 null），稍后重试");
+                return;
             }
 
-            CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] 小地图传送标记状态: marker={(base.nonQuestObjectMarker != null)}, _minimapMarkerSpawned={this._minimapMarkerSpawned}");
+            this._minimapMarkerSpawning = true;
+            this.StartCoroutine(EnsureMinimapMarkerCoroutine());
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] 创建小地图传送标记异常: {e}");
+            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 启动小地图标记协程异常: {e}");
         }
+    }
+
+    private System.Collections.IEnumerator EnsureMinimapMarkerCoroutine()
+    {
+        const float timeout = 10f;
+        float elapsed = 0f;
+
+        while (elapsed < timeout)
+        {
+            if (this == null || this.gameObject == null)
+            {
+                this._minimapMarkerSpawning = false;
+                yield break;
+            }
+
+            try
+            {
+                if (this.nonQuestObjectMarker == null)
+                {
+                    this.MinimapDisplay();
+                }
+
+                QuestMarker? marker = this.nonQuestObjectMarker;
+                if (marker != null)
+                {
+                    marker.playerSeen = true;
+
+                    if (marker.reallyStarted && marker.smallImage != null && marker.smallImage2 != null)
+                    {
+                        RogueLibsCore.RogueSprite? rogueSprite = CustomObjectMetadata.Get(this.GetType()).GetSprite();
+                        if (rogueSprite?.Sprite != null)
+                        {
+                            UnityEngine.Sprite icon = rogueSprite.Sprite;
+                            marker.nonQuestSprite = icon;
+                            if (marker.smallImage != null) marker.smallImage.sprite = icon;
+                            if (marker.smallImage2 != null) marker.smallImage2.sprite = icon;
+                            if (marker.smallImage != null) marker.smallImage.color = new Color32(byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue);
+                            if (marker.smallImage2 != null) marker.smallImage2.color = new Color32(byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue);
+                        }
+
+                        // 应用 IMinimapTeleportable 自定义图标缩放
+                        if (this is IMinimapTeleportable minimapIcon)
+                        {
+                            float iconScale = minimapIcon.GetMinimapIconScale();
+                            if (marker.smallImage != null)
+                                marker.smallImage.transform.localScale = new Vector3(iconScale, iconScale, 1f);
+                            if (marker.smallImage2 != null)
+                                marker.smallImage2.transform.localScale = new Vector3(iconScale, iconScale, 1f);
+                        }
+
+                        this._minimapMarkerSpawned = true;
+                        this._minimapMarkerSpawning = false;
+                        CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] 小地图传送标记已就绪");
+                        yield break;
+                    }
+
+                    // 标记存在但长时间未就绪/图片丢失：视为跨场景损坏的旧标记，销毁后重建
+                    if (elapsed >= 2f)
+                    {
+                        CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 小地图标记异常（reallyStarted={marker.reallyStarted}, smallImage={marker.smallImage != null}, smallImage2={marker.smallImage2 != null}），销毁重建");
+                        UnityEngine.Object.Destroy(marker.gameObject);
+                        this.nonQuestObjectMarker = null;
+                        this._minimapMarkerSpawned = false;
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 创建/刷新小地图传送标记异常: {e.Message}");
+            }
+
+            yield return new WaitForSeconds(0.1f);
+            elapsed += 0.1f;
+        }
+
+        this._minimapMarkerSpawning = false;
+        CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 小地图传送标记创建超时（10秒），稍后由 SetupMore4 重试");
     }
 
     /// <summary>
@@ -623,7 +720,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         catch (Exception e)
         {
             ok = false;
-            CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] 强制设置标记图标异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 强制设置标记图标异常: {e.Message}");
         }
         // 再等一帧（CheckIfSeen2 协程可能在 reallyStarted 后立即设置 sprite），然后再次覆盖
         yield return null;
@@ -637,12 +734,12 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
                 marker.smallImage2.sprite = icon;
             if (ok)
             { 
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] 标记图标已强制设为自定义精灵: {icon.name}");
+                CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] 标记图标已强制设为自定义精灵: {icon.name}");
             }
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] 再次设置标记图标异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 再次设置标记图标异常: {e.Message}");
         }
     }
 
@@ -664,11 +761,11 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
                     customObj.SetupInteractions(h);
                 }
             });
-            CustomBuildingsPlugin.Logger.LogInfo("[CustomBuildings] 交互提供者已注册（非泛型 CreateProvider → 实例虚方法）");
+            CustomBuildingsPlugin.LogInfo("[CustomBuildings] 交互提供者已注册（非泛型 CreateProvider → 实例虚方法）");
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogError($"[CustomBuildings] 注册交互提供者失败: {e}");
+            CustomBuildingsPlugin.LogError($"[CustomBuildings] 注册交互提供者失败: {e}");
         }
     }
 
@@ -693,7 +790,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] Force 应用外观失败: {e}");
+            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] Force 应用外观失败: {e}");
         }
     }
 
@@ -717,7 +814,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             }
             catch (Exception eR)
             {
-                CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] {caller} 启用渲染器失败: {eR.Message}");
+                CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] {caller} 启用渲染器失败: {eR.Message}");
             }
 
             if (this.spr != null && !this.destroyed && !this.destroying)
@@ -732,9 +829,9 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
                     {
                         string targetName = this.GetDirectionalSpriteName();
                         int dirId = coll.GetSpriteIdByName(targetName, -1);
-                        CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] {caller}: 四方向 direction='{this.direction}' 目标精灵='{targetName}' dirId={dirId} baseId={spriteId}");
+                        CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] {caller}: 四方向 direction='{this.direction}' 目标精灵='{targetName}' dirId={dirId} baseId={spriteId}");
                         if (dirId > 0) spriteId = dirId;
-                        else CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] {caller}: 方向精灵 '{targetName}' 未找到(dirId={dirId})，回退基础精灵");
+                        else CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] {caller}: 方向精灵 '{targetName}' 未找到(dirId={dirId})，回退基础精灵");
                     }
                     if (spriteId > 0)
                     {
@@ -748,7 +845,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
                         }
                         catch (Exception eBuild)
                         {
-                            CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] {caller} ForceBuild 失败: {eBuild.Message}");
+                            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] {caller} ForceBuild 失败: {eBuild.Message}");
                         }
 
                         // 用 SpriteScale 放大到合适尺寸
@@ -797,7 +894,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             }
             catch (Exception e3)
             {
-                CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] {caller} 启用碰撞失败: {e3.Message}");
+                CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] {caller} 启用碰撞失败: {e3.Message}");
             }
 
             // 碰撞器随精灵放大（spr.localScale 只放大渲染 mesh；根 BoxCollider2D 不跟随）
@@ -805,7 +902,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] {caller} 应用外观失败: {e}");
+            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] {caller} 应用外观失败: {e}");
         }
     }
 
@@ -851,7 +948,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] 缩放碰撞器失败: {e.Message}");
+            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 缩放碰撞器失败: {e.Message}");
         }
     }
 
@@ -908,7 +1005,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogWarning($"[CustomBuildings] FixMaterialInsts 异常: {e}");
+            CustomBuildingsPlugin.LogWarning($"[CustomBuildings] FixMaterialInsts 异常: {e}");
         }
     }
 
@@ -1015,7 +1112,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
                     item.startingOwner = this.owner;
                 }
                 item.source = this;
-                CustomBuildingsPlugin.Logger.LogInfo($"[{this.ObjectName}] 打碎洒落物品: {spilledInvItem.invItemName} x{spilledInvItem.invItemCount}");
+                CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] 打碎洒落物品: {spilledInvItem.invItemName} x{spilledInvItem.invItemCount}");
             }
 
             // 洒完后清空物品栏，避免与 DestroyMe2 的洒落逻辑重复
@@ -1023,7 +1120,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] 洒落容器物品异常: {e}");
+            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 洒落容器物品异常: {e}");
         }
     }
 
@@ -1044,7 +1141,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogError($"[{this.ObjectName}] OnBreakOpen 回调异常: {e}");
+            CustomBuildingsPlugin.LogError($"[{this.ObjectName}] OnBreakOpen 回调异常: {e}");
         }
 
         // 洒落容器物品：建筑打碎时，内部没捡的物品全部爆出来（像垃圾桶）
@@ -1089,7 +1186,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogError($"[{this.ObjectName}] 爆炸处理异常: {e}");
+            CustomBuildingsPlugin.LogError($"[{this.ObjectName}] 爆炸处理异常: {e}");
         }
 
         // 注意：不能在此设 this.destroying = true！
@@ -1115,7 +1212,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             }
             catch (Exception e)
             {
-                CustomBuildingsPlugin.Logger.LogWarning($"[{this.ObjectName}] DestroyWallTileAtPosition: {e.Message}");
+                CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] DestroyWallTileAtPosition: {e.Message}");
             }
         }
 

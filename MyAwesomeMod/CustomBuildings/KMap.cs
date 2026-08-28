@@ -35,7 +35,7 @@ public static class KMap
             {
                 if (gc.playerAgent.startingChunkReal != null)
                 {
-                    CustomBuildingsPlugin.Logger?.LogInfo($"[KMap] GetStartingChunk: 来源0 玩家区块 startingChunkReal @ {gc.playerAgent.startingChunkReal.name} (chunkID={gc.playerAgent.startingChunkReal.chunkID})");
+                    CustomBuildingsPlugin.LogInfo($"[KMap] GetStartingChunk: 来源0 玩家区块 startingChunkReal @ {gc.playerAgent.startingChunkReal.name} (chunkID={gc.playerAgent.startingChunkReal.chunkID})");
                     return gc.playerAgent.startingChunkReal;
                 }
                 if (gc.playerAgent.startingChunk != 0)
@@ -43,7 +43,7 @@ public static class KMap
                     Chunk? byPlayerId = GetChunkByID(gc.playerAgent.startingChunk);
                     if (byPlayerId != null)
                     {
-                        CustomBuildingsPlugin.Logger?.LogInfo($"[KMap] GetStartingChunk: 来源0b 玩家 startingChunk={gc.playerAgent.startingChunk}");
+                        CustomBuildingsPlugin.LogInfo($"[KMap] GetStartingChunk: 来源0b 玩家 startingChunk={gc.playerAgent.startingChunk}");
                         return byPlayerId;
                     }
                 }
@@ -54,14 +54,14 @@ public static class KMap
             {
                 if (gc.startingPoint.startingChunkReal != null)
                 {
-                    CustomBuildingsPlugin.Logger?.LogInfo($"[KMap] GetStartingChunk: 来源1 startingPoint.startingChunkReal @ {gc.startingPoint.startingChunkReal.name}");
+                    CustomBuildingsPlugin.LogInfo($"[KMap] GetStartingChunk: 来源1 startingPoint.startingChunkReal @ {gc.startingPoint.startingChunkReal.name}");
                     return gc.startingPoint.startingChunkReal;
                 }
                 // 来源 2：只有 chunkID，去 levelChunks 里找
                 Chunk? byId = GetChunkByID(gc.startingPoint.startingChunk);
                 if (byId != null)
                 {
-                    CustomBuildingsPlugin.Logger?.LogInfo($"[KMap] GetStartingChunk: 来源2 startingPoint.startingChunk={gc.startingPoint.startingChunk}");
+                    CustomBuildingsPlugin.LogInfo($"[KMap] GetStartingChunk: 来源2 startingPoint.startingChunk={gc.startingPoint.startingChunk}");
                     return byId;
                 }
             }
@@ -81,7 +81,7 @@ public static class KMap
                                 Chunk? c = GetChunkByID(mapChunk.chunkID);
                                 if (c != null)
                                 {
-                                    CustomBuildingsPlugin.Logger?.LogInfo($"[KMap] GetStartingChunk: 来源3 mapChunkArray[{x},{y}] special=LevelStart chunkID={mapChunk.chunkID}");
+                                    CustomBuildingsPlugin.LogInfo($"[KMap] GetStartingChunk: 来源3 mapChunkArray[{x},{y}] special=LevelStart chunkID={mapChunk.chunkID}");
                                     return c;
                                 }
                             }
@@ -89,11 +89,11 @@ public static class KMap
                     }
                 }
             }
-            CustomBuildingsPlugin.Logger?.LogWarning("[KMap] GetStartingChunk: 所有来源均未找到出生点区块");
+            CustomBuildingsPlugin.LogWarning("[KMap] GetStartingChunk: 所有来源均未找到出生点区块");
         }
         catch (System.Exception e)
         {
-            CustomBuildingsPlugin.Logger?.LogWarning($"[KMap] GetStartingChunk 异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning($"[KMap] GetStartingChunk 异常: {e.Message}");
         }
         return null;
     }
@@ -131,14 +131,14 @@ public static class KMap
             {
                 if (gc.exitPoint.startingChunkReal != null)
                 {
-                    CustomBuildingsPlugin.Logger?.LogInfo($"[KMap] GetEndingChunk: 来源0 exitPoint.startingChunkReal @ {gc.exitPoint.startingChunkReal.name} (chunkID={gc.exitPoint.startingChunkReal.chunkID})");
+                    CustomBuildingsPlugin.LogInfo($"[KMap] GetEndingChunk: 来源0 exitPoint.startingChunkReal @ {gc.exitPoint.startingChunkReal.name} (chunkID={gc.exitPoint.startingChunkReal.chunkID})");
                     return gc.exitPoint.startingChunkReal;
                 }
                 // 来源 1：只有 chunkID，去 levelChunks 里找
                 Chunk? byId = GetChunkByID(gc.exitPoint.startingChunk);
                 if (byId != null)
                 {
-                    CustomBuildingsPlugin.Logger?.LogInfo($"[KMap] GetEndingChunk: 来源1 exitPoint.startingChunk={gc.exitPoint.startingChunk}");
+                    CustomBuildingsPlugin.LogInfo($"[KMap] GetEndingChunk: 来源1 exitPoint.startingChunk={gc.exitPoint.startingChunk}");
                     return byId;
                 }
             }
@@ -158,7 +158,7 @@ public static class KMap
                                 Chunk? c = GetChunkByID(mapChunk.chunkID);
                                 if (c != null)
                                 {
-                                    CustomBuildingsPlugin.Logger?.LogInfo($"[KMap] GetEndingChunk: 来源2 mapChunkArray[{x},{y}] special=LevelEnd chunkID={mapChunk.chunkID}");
+                                    CustomBuildingsPlugin.LogInfo($"[KMap] GetEndingChunk: 来源2 mapChunkArray[{x},{y}] special=LevelEnd chunkID={mapChunk.chunkID}");
                                     return c;
                                 }
                             }
@@ -166,11 +166,11 @@ public static class KMap
                     }
                 }
             }
-            CustomBuildingsPlugin.Logger?.LogWarning("[KMap] GetEndingChunk: 所有来源均未找到出口区块");
+            CustomBuildingsPlugin.LogWarning("[KMap] GetEndingChunk: 所有来源均未找到出口区块");
         }
         catch (System.Exception e)
         {
-            CustomBuildingsPlugin.Logger?.LogWarning($"[KMap] GetEndingChunk 异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning($"[KMap] GetEndingChunk 异常: {e.Message}");
         }
         return null;
     }
@@ -188,56 +188,90 @@ public static class KMap
         return null;
     }
 
+    /// <summary>
+    /// 获取当前关卡中<b>除出口和入口以外的所有区块</b>。
+    /// 入口（出生点）与出口分别用 <see cref="GetStartingChunk"/> / <see cref="GetEndingChunk"/> 识别并排除
+    /// （这两个方法内部有多来源兜底，可靠）；若某个来源未找到（返回 null）则只排除找到的那一个。
+    /// 常用于"在可玩区块里随机选一个生成建筑"，避免生成到玩家出生点或出口。
+    /// </summary>
+    /// <returns>除出口、入口外的所有区块列表（可能为空）。</returns>
+    public static List<Chunk> GetChunksExceptExitAndEntrance()
+    {
+        var result = new List<Chunk>();
+        LoadLevel? level = Level;
+        if (level == null || level.levelChunks == null) return result;
+
+        Chunk? entrance = GetStartingChunk();
+        Chunk? exit = GetEndingChunk();
+
+        foreach (Chunk chunk in level.levelChunks)
+        {
+            if (chunk == null) continue;
+            if (entrance != null && chunk.chunkID == entrance.chunkID) continue;   // 排除入口（出生点）
+            if (exit != null && chunk.chunkID == exit.chunkID) continue;           // 排除出口
+            result.Add(chunk);
+        }
+        return result;
+    }
+
 
     // ==================== 空地查找====================
 
     /// <summary>
     /// 在指定 chunkID 的区块内查找一个随机空地（严格校验墙、水、物体重叠）。
     /// </summary>
-    public static Vector2 FindEmptySpotByChunk(Chunk targetChunk, int maxRetries = 100,bool Exclude_owner = false, bool Exclude_prison = false, bool NearWater = false)
+    /// <param name="ExcludeHole">是否排除窟窿/洞口（<see cref="TileData.hole"/> / <see cref="TileData.futureHole"/>，
+    /// 玩家或 NPC 会掉下去的位置）。默认 true = 排除（安全）；传 false 可允许在这些位置生成。</param>
+    public static Vector2 FindEmptySpotByChunk(Chunk targetChunk, int maxRetries = 100, bool Exclude_owner = false, bool Exclude_prison = false, bool NearWater = false, bool Exclude_NonOwner = false, bool ExcludeHole = true, float edgeMargin = 0.64f)
     {
+        const float spacing = 0.64f;
+
+        // 先计算网格范围，随机选一个格子再校验，避免全图扫描，随机性也更均匀
+        int startX = Mathf.FloorToInt((targetChunk.chunkEdgeW + edgeMargin) / spacing);
+        int endX = Mathf.FloorToInt((targetChunk.chunkEdgeE - edgeMargin) / spacing);
+        int startY = Mathf.FloorToInt((targetChunk.chunkEdgeS + edgeMargin) / spacing);
+        int endY = Mathf.FloorToInt((targetChunk.chunkEdgeN - edgeMargin) / spacing);
+
+        if (startX <= endX && startY <= endY)
+        {
+            for (int attempt = 0; attempt < maxRetries; attempt++)
+            {
+                int x = Random.Range(startX, endX + 1);
+                int y = Random.Range(startY, endY + 1);
+                Vector2 testPos = new Vector2(x * spacing, y * spacing);
+
+                TileData tile = GC!.tileInfo.GetTileData(testPos);
+                if (tile.chunkID != targetChunk.chunkID) continue;
+                if (tile.wallMaterial != wallMaterialType.None) continue;
+                if (ExcludeHole && (tile.hole || tile.futureHole)) continue;   // 窟窿/洞口：玩家或 NPC 会掉下去的位置，默认排除
+                if (tile.water || tile.ice || tile.conveyorBelt || tile.dangerousToWalk || tile.solidObject) continue;
+                if (Exclude_owner && tile.owner > 0) continue;
+                if (Exclude_NonOwner && tile.owner == 0) continue;
+                if (Exclude_prison && tile.prison > 0) continue;
+                if (GC!.tileInfo.IsOverlapping(testPos, "ObjectRealSprite", 0.64f) != null) continue;
+                if (NearWater && (GC.tileInfo.WaterNearby(testPos) || GC.tileInfo.IceNearby(testPos))) continue;
+
+                return testPos;
+            }
+        }
+
+        // 兜底：网格采样失败时退回原随机连续采样，避免小区块找不到位置
         for (int attempt = 0; attempt < maxRetries; attempt++)
         {
-            // 在区块边界内随机取点（世界坐标）
-            float randX = Random.Range(targetChunk.chunkEdgeW + 0.32f, targetChunk.chunkEdgeE - 0.32f);
-            float randY = Random.Range(targetChunk.chunkEdgeS + 0.32f, targetChunk.chunkEdgeN - 0.32f);
+            float randX = Random.Range(targetChunk.chunkEdgeW + edgeMargin, targetChunk.chunkEdgeE - edgeMargin);
+            float randY = Random.Range(targetChunk.chunkEdgeS + edgeMargin, targetChunk.chunkEdgeN - edgeMargin);
             Vector2 testPos = new Vector2(randX, randY);
 
-            // 获取瓦片数据
             TileData tile = GC!.tileInfo.GetTileData(testPos);
-
-            // 1.必须属于目标区块（防止浮点误差）
             if (tile.chunkID != targetChunk.chunkID) continue;
-
-            // 2.排除墙壁（包括未销毁的墙）
             if (tile.wallMaterial != wallMaterialType.None) continue;
+            if (tile.hole || tile.water || tile.ice || tile.conveyorBelt || tile.dangerousToWalk || tile.solidObject) continue;
+            if (Exclude_owner && tile.owner > 0) continue;
+            if (Exclude_NonOwner && tile.owner == 0) continue;
+            if (Exclude_prison && tile.prison > 0) continue;
+            if (GC!.tileInfo.IsOverlapping(testPos, "ObjectRealSprite", 0.64f) != null) continue;
+            if (NearWater && (GC.tileInfo.WaterNearby(testPos) || GC.tileInfo.IceNearby(testPos))) continue;
 
-            // 3.排除空洞、水、冰、传送带、危险、固体物体
-            if (tile.hole || tile.water || tile.ice || tile.conveyorBelt || tile.dangerousToWalk || tile.solidObject)continue;
-
-            // 4.是否忽略有所有者的建筑
-            if (Exclude_owner)
-            {
-                if (tile.owner > 0) continue;
-            }
-
-            // 5.是否忽略有所有者的建筑
-            if (Exclude_prison)
-            {
-                if (tile.prison > 0) continue;
-            }
-
-            // 6.检查是否与现有物体重叠（使用原代码的 IsOverlapping）
-            if (GC!.tileInfo.IsOverlapping(testPos, "ObjectRealSprite", 0.64f) != null)continue;
-
-            // 7.是否在水体附近
-            if (NearWater)
-            {
-                if (GC.tileInfo.WaterNearby(testPos) || GC.tileInfo.IceNearby(testPos)) continue;
-            }
-            
-
-            // 找到合法空地，返回坐标
             return testPos;
         }
         return Vector2.zero;
@@ -250,8 +284,10 @@ public static class KMap
     /// </summary>
     /// <param name="chunk">目标区块。</param>
     /// <param name="spacing">采样间距（默认 0.64，即一个瓦片格）。</param>
+    /// <param name="ExcludeHole">是否排除窟窿/洞口（<see cref="TileData.hole"/> / <see cref="TileData.futureHole"/>，
+    /// 玩家或 NPC 会掉下去的位置）。默认 true = 排除（安全）；传 false 可允许在这些位置生成。</param>
     /// <returns>所有空地坐标列表（可能为空）。</returns>
-    public static List<Vector2> GetAllEmptySpotsInChunk(Chunk? chunk, float spacing = 0.64f,bool Exclude_owner = false, bool Exclude_prison = false, bool NearWater = false)
+    public static List<Vector2> GetAllEmptySpotsInChunk(Chunk? chunk, float spacing = 0.64f, bool Exclude_owner = false, bool Exclude_prison = false, bool NearWater = false, bool Exclude_NonOwner = false, bool ExcludeHole = true, float edgeMargin = 0.64f)
     {
         var result = new List<Vector2>();
         if (chunk == null) return result;
@@ -259,11 +295,11 @@ public static class KMap
         TileInfo? tileInfo = TileInfo;
         if (tileInfo == null) return result;
 
-        // 根据区块边界计算遍历范围（以瓦片为单位）
-        int startX = Mathf.FloorToInt((chunk.chunkEdgeW + 0.32f) / spacing);
-        int endX = Mathf.FloorToInt((chunk.chunkEdgeE - 0.32f) / spacing);
-        int startY = Mathf.FloorToInt((chunk.chunkEdgeS + 0.32f) / spacing);
-        int endY = Mathf.FloorToInt((chunk.chunkEdgeN - 0.32f) / spacing);
+        // 根据区块边界计算遍历范围（以瓦片为单位），edgeMargin 用于排除边缘位置
+        int startX = Mathf.FloorToInt((chunk.chunkEdgeW + edgeMargin) / spacing);
+        int endX = Mathf.FloorToInt((chunk.chunkEdgeE - edgeMargin) / spacing);
+        int startY = Mathf.FloorToInt((chunk.chunkEdgeS + edgeMargin) / spacing);
+        int endY = Mathf.FloorToInt((chunk.chunkEdgeN - edgeMargin) / spacing);
 
         for (int x = startX; x <= endX; x++)
         {
@@ -277,10 +313,20 @@ public static class KMap
                 if (tile.wallMaterial != wallMaterialType.None)
                     continue;
 
+                // 窟窿/洞口（玩家或 NPC 会掉下去的位置）：默认排除（ExcludeHole=true），传 false 可允许
+                if (ExcludeHole && (tile.hole || tile.futureHole))
+                    continue;
+
                 if (Exclude_owner)
                 {
                     if (tile.owner > 0) continue;
                 }
+
+                if (Exclude_NonOwner)
+                {
+                    if (tile.owner == 0) continue;
+                }
+
 
                 if (Exclude_prison)
                 {
@@ -299,6 +345,13 @@ public static class KMap
                 result.Add(pos);
             }
         }
+
+        // 兜底：如果边缘排除导致一个位置都找不到，退回不排除边缘，避免建筑不生成
+        if (result.Count == 0 && edgeMargin > 0f)
+        {
+            return GetAllEmptySpotsInChunk(chunk, spacing, Exclude_owner, Exclude_prison, NearWater, Exclude_NonOwner, ExcludeHole, 0f);
+        }
+
         return result;
     }
 
@@ -314,7 +367,7 @@ public static class KMap
         }
         catch (System.Exception e)
         {
-            CustomBuildingsPlugin.Logger?.LogWarning($"[KMap] 生成建筑 {objectName} 失败: {e.Message}");
+            CustomBuildingsPlugin.LogWarning($"[KMap] 生成建筑 {objectName} 失败: {e.Message}");
             return null;
         }
     }
@@ -399,7 +452,7 @@ public static class KMap
         }
         catch (System.Exception e)
         {
-            CustomBuildingsPlugin.Logger?.LogWarning($"[KMap] 删除建筑 {obj.objectName} 失败: {e.Message}");
+            CustomBuildingsPlugin.LogWarning($"[KMap] 删除建筑 {obj.objectName} 失败: {e.Message}");
             return null; // 删除失败，返回 null
         }
     }

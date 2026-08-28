@@ -73,3 +73,12 @@ public class YourBuilding : CustomObjectReal
 5. 由于原游戏代码的缘故，编辑器里的自定义建筑的碰撞箱和非关卡编辑器内自定义刷新建筑所生成的建筑，碰撞箱会有所差异，目前无法完美保持一致，RogueForge内部会通过硬编码使其趋近一致。
 6. CustomBuildingsPlugin.Logger.LogInfo()，RogueForge提供了此方法用于打印日志，你也可以用别的，只是这里说一下。
 7. Q.主播主播，可被拾取是什么意思？ A.我也不知道。
+
+# 三、建筑自发光
+- 自定义建筑会像垃圾桶一样拥有一个光源，默认为开启。
+
+示：
+```
+this.SetBuildingLight(false); // 关灯
+```
+

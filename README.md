@@ -27,7 +27,9 @@
   - [小地图传送接口 IMinimapTeleportable](./RogueForge%20详细手册/接口/小地图传送接口%20IMinimapTeleportable.md)
   - [破碎接口 IBreakOpen](./RogueForge%20详细手册/接口/破碎接口%20IBreakOpen.md)
   - [刷新接口 IBuildingSpawner](./RogueForge%20详细手册/接口/刷新接口%20IBuildingSpawner.md)
-- [地图相关工具类 KMap](./RogueForge%20详细手册/工具类/地图相关工具类%20KMap.md)
+- 工具类
+  - [地图相关工具类 KMap](./RogueForge%20详细手册/工具类/地图相关工具类%20KMap.md)
+  - [游戏UI操作类 KLoadingTips](./RogueForge%20详细手册/工具类/游戏UI操作类%20KLoadingTips.md)
 - 建筑例子
   - [四不像](./RogueForge%20详细手册/建筑例子/四不像.md)
 - [RogueForge 错误日志](./RogueForge%20详细手册/RogueForge%20错误日志.md)

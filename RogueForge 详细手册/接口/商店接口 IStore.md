@@ -22,6 +22,8 @@ public List<InvItem> GetBuyItems()
 		bananaPeel.invItemCount = 2;
 		bananaPeel.ItemSetup(notNew: true);
 		bananaPeel.itemValue = 5;  
+		
+		List<InvItem> items = new List<InvItem>();
 		items.Add(bananaPeel);
 		return items;
 }
@@ -38,7 +40,7 @@ public void OnItemBought(InvItem item, Agent buyer)
 	buyer!.Say("我买东西了！")
 	// 进行购买
 	this.PurchaseItem(this, buyer!, item!);
-    }
+}
 ```
 
 # 三、自定义商品标签
@@ -48,15 +50,15 @@ public void OnItemBought(InvItem item, Agent buyer)
 例：
 ```
 /// <summary>商店第 1 个槽位。</summary>
-public override virtual string? PriceOverride1 => null;
+public override string? PriceOverride1 => null;
 /// <summary>商店第 2 个槽位。</summary>
-public override virtual string? PriceOverride2 => null;
+public override string? PriceOverride2 => null;
 /// <summary>商店第 3 个槽位。</summary>
-public override virtual string? PriceOverride3 => null;
+public override string? PriceOverride3 => null;
 /// <summary>商店第 4 个槽位。</summary>
-public override virtual string? PriceOverride4 => null;
+public override string? PriceOverride4 => null;
 /// <summary>商店第 5 个槽位。</summary>
-public override virtual string? PriceOverride5 => null;
+public override string? PriceOverride5 => null;
 ```
 
 # 四、自定义商品槽位颜色

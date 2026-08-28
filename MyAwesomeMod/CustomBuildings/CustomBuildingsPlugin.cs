@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.CompilerServices;
 using BepInEx;
 using BepInEx.Logging;
 using RogueLibsCore;
@@ -20,6 +23,41 @@ public static class CustomBuildingsPlugin
     /// <summary>库的日志源（Initialize 时从宿主插件获取）。</summary>
     public static ManualLogSource Logger = null!;
 
+    /// <summary>
+    /// 输出调试级别日志信息（仅在 DEBUG 编译模式下生效），统一以 [RogueForge] 开头。
+    /// 消息内容可自带模块前缀（如 "[KMap] ..."），输出形如 "[RogueForge] [KMap] ..."。
+    /// </summary>
+    /// <param name="message">要记录的日志消息。</param>
+    [Conditional("DEBUG")]
+    internal static void LogInfo(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+        if (Logger == null) return;
+        Logger.LogInfo("[RogueForge] " + message);
+    }
+
+    /// <summary>
+    /// 输出警告级别日志信息（所有编译模式均生效），统一以 [RogueForge] 开头。
+    /// </summary>
+    /// <param name="message">要记录的日志消息。</param>
+    internal static void LogWarning(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+        if (Logger == null) return;
+        Logger.LogWarning("[RogueForge] " + message);
+    }
+
+    /// <summary>
+    /// 输出错误级别日志信息（所有编译模式均生效），统一以 [RogueForge] 开头。
+    /// </summary>
+    /// <param name="message">要记录的日志消息。</param>
+    internal static void LogError(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+        if (Logger == null) return;
+        Logger.LogError("[RogueForge] " + message);
+    }
+
     /// <summary>是否已初始化（防止重复注册 patch）。</summary>
     private static bool initialized;
 
@@ -28,7 +66,7 @@ public static class CustomBuildingsPlugin
     /// 参考 RogueLibsCore：GameController.SetVersionText Postfix 往 versionText2.text 追加 "RL v4.0.0-rc.2"。
     /// 修改此字符串即可自定义显示内容（例如改成你自己的 Mod 名和版本号）。
     /// </summary>
-    public static string VersionSignature = "*RF v1.0.3";
+    public static string VersionSignature = "*RF 1.0.4";
 
 
 
@@ -58,7 +96,7 @@ public static class CustomBuildingsPlugin
         // 这样 patch 方法保留在库中，通过宿主插件的 Harmony 实例注册。
         RoguePatcher patcher = new RoguePatcher(host, typeof(CustomBuildingsPlugin));
 
-        Logger.LogInfo($"[CustomBuildings] Initialize: Registry 当前内容 = {CustomObjects.Names.Count} 个: [{string.Join(", ", CustomObjects.Names)}]");
+        LogInfo($"[CustomBuildings] Initialize: Registry 当前内容 = {CustomObjects.Names.Count} 个: [{string.Join(", ", CustomObjects.Names)}]");
 
         // prefab 注册（GameResources.SetupDics 后把所有注册建筑注册进字典）
         bool r1 = patcher.Postfix(typeof(GameResources), nameof(GameResources.SetupDics), "GameResources_SetupDics");
@@ -83,6 +121,9 @@ public static class CustomBuildingsPlugin
         // 名称显示修复：NameDB.GetName 找不到条目时返回 "E_"+名称（错误标记），
         // Postfix 去掉错误前缀 "E_"（只去第一个），避免按钮/界面文本显示 E_#sym:xxx。
         bool r8 = patcher.Postfix(typeof(NameDB), "GetName", "NameDB_GetName");
+
+        // 关卡加载开始前：先销毁所有旧的自定义建筑实例，避免跨层残留导致小地图标记不刷新/建筑越积越多
+        bool r8b = patcher.Prefix(typeof(LoadLevel), "SetupMore4", "LoadLevel_SetupMore4_DestroyOldBuildings");
 
         // 关卡加载完成（LoadLevel.SetupMore4 每关 100% 时调用）：
         // 重置所有存活自定义建筑实例的容器填充状态并重新填充。
@@ -110,6 +151,12 @@ public static class CustomBuildingsPlugin
         // versionText2.text（左下角版本号文本）。追加在 RogueLibs 签名之后靠右显示，互不遮挡。
         bool r13 = patcher.Postfix(typeof(GameController), "SetVersionText", "GameController_SetVersionText");
 
+        // 存档兜底：原版在存档读不出来时（Unlocks.CopyToCorrupted）会把 CloudData/BackupData 里的原档
+        // 移动/替换到 Corrupted 目录（File.Replace），导致玩家存档文件消失；改成"只复制不移动"，
+        // 无论任何原因读档失败，原档都保留在原地，玩家重装 mod 后仍可恢复。
+        bool r14 = patcher.Prefix(typeof(Unlocks), "CopyToCorrupted", "Unlocks_CopyToCorrupted",
+            new Type[] { typeof(string), typeof(string), typeof(string) });
+
         // 官方交互系统：注册自定义建筑交互提供者（RogueLibsPatcher hook 驱动，绕开 DMD）
         // 它同时接管了高亮：RogueLibs 拦截 PlayfieldObject.interactable getter → IsInteractable()
         // → 检测到我们的按钮 → 返回 true → 游戏原生高亮（无需强制高亮 hack）。
@@ -119,8 +166,8 @@ public static class CustomBuildingsPlugin
         // 它们被 RogueLibsPatcher 的 DMD 技术重写，钩子打空不触发。
         // 交互与高亮都改用 RogueLibs 官方 RogueInteractions.CreateProvider 机制。
 
-        Logger.LogInfo($"[RogueForge] 初始化完成，13 个 patch 注册结果: {r1}{r2}{r3}{r4}{r5}{r6}{r7}{r8}{r9}{r10}{r11}{r12}{r13}");
-        Logger.LogInfo($"[RogueForge] 如果遇到有关于RogueForge的报错，请先自行翻阅RogueForge错误手册。");
+        LogInfo($"[RogueForge] 初始化完成，14 个 patch 注册结果: {r1}{r2}{r3}{r4}{r5}{r6}{r7}{r8}{r9}{r10}{r11}{r12}{r13}{r14}");
+        LogInfo($"[RogueForge] 如果遇到有关于RogueForge的报错，请先自行翻阅RogueForge错误手册。");
     }
 
     // ==================== Patch: GameController.SetVersionText（左下角版本签名） ====================
@@ -140,7 +187,54 @@ public static class CustomBuildingsPlugin
         }
         catch (Exception e)
         {
-            Logger.LogWarning($"[CustomBuildings] GameController.SetVersionText 钩子异常: {e.Message}");
+            LogWarning($"[CustomBuildings] GameController.SetVersionText 钩子异常: {e.Message}");
+        }
+    }
+
+    // ==================== Patch: Unlocks.CopyToCorrupted（存档损坏恢复保护，兜底） ====================
+    // 原版流程：存档读不出来时（SaveGame.Load catch）调用 CopyToCorrupted 把损坏档"归档"到 Corrupted 目录。
+    // 第一次失败是 File.Copy（原档保留），但 Corrupted 里已有同名文件时走 File.Replace（Unlocks.cs 1257 行）
+    // —— 会把 CloudData/BackupData 里的原档【移动】进 Corrupted，玩家的存档文件就此消失；
+    // 若玩家随后在无 mod 状态继续玩，退出时 Save() 还会用残缺状态覆写，mod 内容永久丢失。
+    // 本补丁把"移动/替换"改为"只复制"：原档永远保留在原地，只往 Corrupted 放一份副本，
+    // 任何原因（mod 卸载、特质序列化失败、版本不兼容等）导致的读档失败都不会让存档文件消失，
+    // 玩家重装 mod 后原档仍在、可恢复。
+
+    /// <summary>[Prefix] Unlocks.CopyToCorrupted — 只复制不移动，保留原存档文件（兜底）。</summary>
+    public static bool Unlocks_CopyToCorrupted(Unlocks __instance, string myFileName, string myFileNameOnly, string saveSlot)
+    {
+        try
+        {
+            GameController? gc = GameController.gameController;
+            if (gc == null) return true;
+
+            // 与原版一致的存档根目录解析
+            string dataBasePath = Application.persistentDataPath;
+            if (gc.usingMyDocuments && !gc.macVersion && !gc.linuxVersion && !gc.usingUWP)
+            {
+                dataBasePath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "/" + gc.dataFolder;
+            }
+
+            string sourcePath = dataBasePath + myFileName;
+            if (!File.Exists(sourcePath)) return false;   // 原档不存在，无需处理
+
+            // 确保 Corrupted 目录存在
+            string corruptedDir = dataBasePath + "/Corrupted/";
+            if (!Directory.Exists(corruptedDir))
+            {
+                Directory.CreateDirectory(corruptedDir);
+            }
+
+            // 只复制到 Corrupted，绝不动原档（原版此处 File.Replace 会移走/覆盖原档）
+            string destPath = corruptedDir + saveSlot + myFileNameOnly;
+            File.Copy(sourcePath, destPath, overwrite: true);
+
+            return false;   // 已处理，拦截原版
+        }
+        catch (Exception e)
+        {
+            LogWarning($"[CustomBuildings] CopyToCorrupted 保护异常: {e.Message}");
+            return true;    // 异常时放行原版，避免影响游戏
         }
     }
 
@@ -172,14 +266,14 @@ public static class CustomBuildingsPlugin
             }
             catch (Exception eCb)
             {
-                CustomBuildingsPlugin.Logger.LogWarning($"[{objReal.objectName}] OnItemBought 回调异常: {eCb.Message}");
+                CustomBuildingsPlugin.LogWarning($"[{objReal.objectName}] OnItemBought 回调异常: {eCb.Message}");
             }
 
             return false; // 拦截原版自动购买（购买已由用户回调决定）
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogWarning($"[CustomBuildings] InvSlot.BuyItem 钩子异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning($"[CustomBuildings] InvSlot.BuyItem 钩子异常: {e.Message}");
             return true; // 异常时放行原版，避免卡死
         }
     }
@@ -245,6 +339,27 @@ public static class CustomBuildingsPlugin
                 case 3: overrideText = store.PriceOverride4; break;
                 case 4: overrideText = store.PriceOverride5; break;
             }
+
+            // ===== 第二层防护 =====
+            // 第一层（上面）已立即设置标签/颜色；再挂一个短暂延迟的校验协程：
+            // 若第一层的设置被其他补丁/刷新逻辑覆盖（未生效），则重新设置一遍。
+            // 同一槽位只挂一个协程（pendingPriceVerify 标记），避免重复堆积。
+            if ((overrideColor != null || !string.IsNullOrEmpty(overrideText))
+                && !pendingPriceVerify.TryGetValue(__instance, out _))
+            {
+                try
+                {
+                    pendingPriceVerify.Add(__instance, new object());
+                    __instance.StartCoroutine(VerifyPriceOverrideCoroutine(
+                        __instance, store, __instance.slotNumber, item.invItemName, overrideText, overrideColor));
+                }
+                catch (Exception eC)
+                {
+                    pendingPriceVerify.Remove(__instance);
+                    LogWarning($"[CustomBuildings] 启动第二层价格校验协程失败: {eC.Message}");
+                }
+            }
+
             if (!string.IsNullOrEmpty(overrideText))
             {
                 __instance.toolbarNumText.enabled = true;
@@ -259,7 +374,77 @@ public static class CustomBuildingsPlugin
         }
         catch (Exception e)
         {
-            Logger.LogWarning($"[CustomBuildings] InvSlot.UpdateInvSlot 钩子异常: {e.Message}");
+            LogWarning($"[CustomBuildings] InvSlot.UpdateInvSlot 钩子异常: {e.Message}");
+        }
+    }
+
+    /// <summary>第二层价格校验进行中的槽位集合（防同一槽位重复挂校验协程）。
+    /// 用弱引用表：槽位销毁后自动清理，不泄漏。</summary>
+    private static readonly ConditionalWeakTable<InvSlot, object> pendingPriceVerify =
+        new ConditionalWeakTable<InvSlot, object>();
+
+    /// <summary>
+    /// 第二层防护协程：第一层（<see cref="InvSlot_UpdateInvSlot"/> 立即设置）应用后，
+    /// 短暂延迟再校验一次——若 override 标签/颜色被其他补丁/刷新逻辑覆盖（未生效），则重新设置一遍。
+    /// 用 <see cref="WaitForSecondsRealtime"/> 保证商店界面暂停（timeScale=0）时也能执行；
+    /// 校验前确认商品未变化，避免玩家买走/换货后把旧标签误贴到新商品上。
+    /// </summary>
+    /// <param name="slot">商店槽位。</param>
+    /// <param name="store">实现 <see cref="IStore"/> 的建筑。</param>
+    /// <param name="slotNumber">槽位号（0-4）。</param>
+    /// <param name="itemName">第一层处理时的商品名。</param>
+    /// <param name="overrideText">期望的标签（null/空 = 无标签覆盖）。</param>
+    /// <param name="overrideColor">期望的颜色（null = 无颜色覆盖）。</param>
+    private static System.Collections.IEnumerator VerifyPriceOverrideCoroutine(
+        InvSlot slot, IStore store, int slotNumber, string itemName, string? overrideText, Color? overrideColor)
+    {
+        // 短暂延迟（真实时间，暂停也生效），等可能覆盖第一层设置的逻辑先执行完
+        yield return new WaitForSecondsRealtime(0.1f);
+
+        try
+        {
+            // 商店已关闭 → 无需再校验
+            if (slot == null || slot.agent == null || slot.agent.worldSpaceGUI == null
+                || !slot.agent.worldSpaceGUI.openedNPCChest) yield break;
+            if (slot.agent.mainGUI == null || slot.agent.mainGUI.invInterface == null) yield break;
+
+            // 槽位对应商品：确认还是第一层处理的同一商品，防止买走/换货后误覆盖
+            InvDatabase? chestDb = slot.agent.mainGUI.invInterface.chestDatabase;
+            if (chestDb == null || chestDb.InvItemList == null
+                || slotNumber < 0 || slotNumber >= chestDb.InvItemList.Count) yield break;
+            InvItem? item = chestDb.InvItemList[slotNumber];
+            if (item == null || item.invItemName != itemName) yield break;
+
+            // ===== 第二层校验：第一层未生效（被覆盖）则重新设置 =====
+            // 颜色 override
+            if (overrideColor != null && slot.backgroundImage2 != null)
+            {
+                if (slot.backgroundImage2.color != (Color)overrideColor.Value)
+                {
+                    slot.backgroundImage2.enabled = true;
+                    slot.backgroundImage2.color = overrideColor.Value;
+                    LogInfo($"[CustomBuildings] 槽位{slotNumber} 颜色未生效，第二层已重新设置");
+                }
+            }
+            // 标签 override
+            if (!string.IsNullOrEmpty(overrideText) && slot.toolbarNumText != null)
+            {
+                if (slot.toolbarNumText.text != overrideText)
+                {
+                    slot.toolbarNumText.enabled = true;
+                    slot.toolbarNumText.text = overrideText;
+                    LogInfo($"[CustomBuildings] 槽位{slotNumber} 标签未生效，第二层已重新设置");
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            LogWarning($"[CustomBuildings] 第二层价格校验协程异常: {e.Message}");
+        }
+        finally
+        {
+            // 校验完成（成功/失败/提前退出），允许该槽位后续再次挂校验
+            pendingPriceVerify.Remove(slot);
         }
     }
 
@@ -292,7 +477,7 @@ public static class CustomBuildingsPlugin
                 CustomObjectReal? template = EnsurePrefabValid(meta);
                 if (template == null)
                 {
-                    Logger.LogWarning($"[{meta.Name}] LoadLevel.SetupMore4: 无法获取 prefab 模板实例，跳过刷新");
+                    LogWarning($"[{meta.Name}] LoadLevel.SetupMore4: 无法获取 prefab 模板实例，跳过刷新");
                     continue;
                 }
                 if (template is IBuildingSpawner spawner)
@@ -300,18 +485,60 @@ public static class CustomBuildingsPlugin
                     try
                     {
                         spawner.OnLevelSpawn(__instance);
-                        Logger.LogInfo($"[{meta.Name}] 普通关卡刷新回调已执行");
+                        LogInfo($"[{meta.Name}] 普通关卡刷新回调已执行");
                     }
                     catch (Exception e)
                     {
-                        Logger.LogError($"[{meta.Name}] OnLevelSpawn 回调异常: {e}");
+                        LogError($"[{meta.Name}] OnLevelSpawn 回调异常: {e}");
                     }
                 }
             }
         }
         catch (Exception e)
         {
-            Logger.LogWarning($"[CustomBuildings] LoadLevel.SetupMore4 建筑刷新钩子异常: {e.Message}");
+            LogWarning($"[CustomBuildings] LoadLevel.SetupMore4 建筑刷新钩子异常: {e.Message}");
+        }
+    }
+
+    // ==================== Patch: LoadLevel.SetupMore4 (Prefix) ====================
+    // 关卡加载前先销毁所有旧的自定义建筑实例。
+    // 这些实例跨场景残留后会导致：
+    //   1. 小地图标记不刷新/丢失
+    //   2. 建筑越积越多（日志里 LiveInstances 可到几百个）
+    // 用 DestroyImmediate 确保在后续 Postfix 生成新建筑前旧建筑已真正移除。
+
+    /// <summary>[Prefix] LoadLevel.SetupMore4 — 销毁所有旧自定义建筑实例。</summary>
+    public static void LoadLevel_SetupMore4_DestroyOldBuildings()
+    {
+        try
+        {
+            // 跳过 prefab 模板：prefab 组件（PrefabObject 指向自身）跨场景存活（DontDestroyOnLoad），
+            // 若销毁它，每次进关 Spawn 时 EnsurePrefabValid 都会判定失效并重建（"prefab 已失效"警告刷屏）。
+            // 实例的 PrefabObject 指向原 prefab（!= 自身 gameObject），不受影响。
+            List<CustomObjectReal> instances = new List<CustomObjectReal>(CustomObjectReal.LiveInstances);
+            int destroyed = 0, skippedPrefabs = 0;
+            foreach (CustomObjectReal custom in instances)
+            {
+                if (custom == null) continue;
+                if (custom.PrefabObject != null && custom.gameObject == custom.PrefabObject)
+                {
+                    skippedPrefabs++;   // prefab 模板，保留
+                    continue;
+                }
+                if (custom.gameObject != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(custom.gameObject);
+                    destroyed++;
+                }
+            }
+            if (instances.Count > 0)
+            {
+                LogInfo($"[CustomBuildings] LoadLevel.SetupMore4: 已销毁 {destroyed} 个旧自定义建筑实例（跳过 {skippedPrefabs} 个 prefab 模板）");
+            }
+        }
+        catch (Exception e)
+        {
+            LogWarning($"[CustomBuildings] LoadLevel.SetupMore4 销毁旧建筑异常: {e.Message}");
         }
     }
 
@@ -333,12 +560,12 @@ public static class CustomBuildingsPlugin
             }
             if (instances.Count > 0)
             {
-                Logger.LogInfo($"[CustomBuildings] LoadLevel.SetupMore4: 已重置 {instances.Count} 个自定义建筑容器");
+                LogInfo($"[CustomBuildings] LoadLevel.SetupMore4: 已重置 {instances.Count} 个自定义建筑容器");
             }
         }
         catch (Exception e)
         {
-            Logger.LogWarning($"[CustomBuildings] LoadLevel.SetupMore4 钩子异常: {e.Message}");
+            LogWarning($"[CustomBuildings] LoadLevel.SetupMore4 钩子异常: {e.Message}");
         }
     }
 
@@ -361,7 +588,7 @@ public static class CustomBuildingsPlugin
         }
         catch (Exception e)
         {
-            Logger.LogWarning($"[CustomBuildings] NameDB.GetName 钩子异常: {e.Message}");
+            LogWarning($"[CustomBuildings] NameDB.GetName 钩子异常: {e.Message}");
         }
     }
 
@@ -382,12 +609,12 @@ public static class CustomBuildingsPlugin
             if (agent != null && __instance.tr != null)
                 dist = Vector2.Distance(agent.tr.position, __instance.tr.position);
 
-            Logger.LogInfo($"[CustomBuildings] Bed.Interact 触发! 触发者={agentInfo}, 本地玩家={isLocal}, "
+            LogInfo($"[CustomBuildings] Bed.Interact 触发! 触发者={agentInfo}, 本地玩家={isLocal}, "
                 + $"玩家到床中心距离={dist:F2}, 床位置={__instance?.tr?.position}");
         }
         catch (Exception e)
         {
-            Logger.LogWarning($"[CustomBuildings] Bed.Interact 钩子异常: {e.Message}");
+            LogWarning($"[CustomBuildings] Bed.Interact 钩子异常: {e.Message}");
         }
     }
 
@@ -397,7 +624,7 @@ public static class CustomBuildingsPlugin
     /// <summary>[Postfix] GameResources.SetupDics — 注册所有自定义建筑 prefab。</summary>
     public static void GameResources_SetupDics(GameResources __instance)
     {
-        Logger.LogInfo($"[CustomBuildings] SetupDics Postfix 触发，Registry={CustomObjects.Names.Count} 个: [{string.Join(", ", CustomObjects.Names)}]");
+        LogInfo($"[CustomBuildings] SetupDics Postfix 触发，Registry={CustomObjects.Names.Count} 个: [{string.Join(", ", CustomObjects.Names)}]");
         foreach (KeyValuePair<string, CustomObjectMetadata> kv in CustomObjects.Registry)
         {
             string objectName = kv.Key;
@@ -406,13 +633,13 @@ public static class CustomBuildingsPlugin
             {
                 if (__instance.objectPrefabDic.ContainsKey(objectName))
                 {
-                    Logger.LogInfo($"[CustomBuildings] SetupDics: {objectName} 已在 objectPrefabDic，跳过");
+                    LogInfo($"[CustomBuildings] SetupDics: {objectName} 已在 objectPrefabDic，跳过");
                     continue;
                 }
 
                 if (!__instance.objectPrefabDic.ContainsKey(meta.CloneSource))
                 {
-                    Logger.LogError($"[CustomBuildings] 克隆源 {meta.CloneSource} 不存在（建筑 {objectName}），跳过注册");
+                    LogError($"[CustomBuildings] 克隆源 {meta.CloneSource} 不存在（建筑 {objectName}），跳过注册");
                     continue;
                 }
 
@@ -461,12 +688,12 @@ public static class CustomBuildingsPlugin
                 if (customIcon != null)
                 {
                     __instance.objectDic[objectName] = customIcon;
-                    Logger.LogInfo($"[CustomBuildings] objectDic[{objectName}] 已更新为自定义精灵图标 (Sprite={customIcon.name})");
+                    LogInfo($"[CustomBuildings] objectDic[{objectName}] 已更新为自定义精灵图标 (Sprite={customIcon.name})");
                 }
                 else if (!__instance.objectDic.ContainsKey(objectName) && __instance.objectDic.ContainsKey(meta.CloneSource))
                 {
                     __instance.objectDic.Add(objectName, __instance.objectDic[meta.CloneSource]);
-                    Logger.LogInfo($"[CustomBuildings] objectDic[{objectName}] 使用克隆源图标 {meta.CloneSource}（自定义精灵为空）");
+                    LogInfo($"[CustomBuildings] objectDic[{objectName}] 使用克隆源图标 {meta.CloneSource}（自定义精灵为空）");
                 }
 
                 // objectVarDic 双保险注册
@@ -483,11 +710,11 @@ public static class CustomBuildingsPlugin
                     });
                 }
 
-                Logger.LogInfo($"[CustomBuildings] prefab 注册成功：{objectName}（克隆源 {meta.CloneSource}）");
+                LogInfo($"[CustomBuildings] prefab 注册成功：{objectName}（克隆源 {meta.CloneSource}）");
             }
             catch (Exception e)
             {
-                Logger.LogError($"[CustomBuildings] prefab 注册失败：{objectName} - {e}");
+                LogError($"[CustomBuildings] prefab 注册失败：{objectName} - {e}");
             }
         }
     }
@@ -519,14 +746,14 @@ public static class CustomBuildingsPlugin
     {
         if (dataList2 is null)
         {
-            Logger.LogInfo($"[CustomBuildings] OpenObjectLoad Prefix: dataList2 为 null");
+            LogInfo($"[CustomBuildings] OpenObjectLoad Prefix: dataList2 为 null");
             return;
         }
 
         // 只认物件放置面板：第二组列表必含 Window / ATMMachine
         // （墙/地板/灯/居民/道具栏的 dataList2 都不含，不会误判）
         bool isObjectPanel = dataList2.Contains("Window") || dataList2.Contains("ATMMachine");
-        Logger.LogInfo($"[CustomBuildings] OpenObjectLoad Prefix: dataList2.Count={dataList2.Count}, 含Window={dataList2.Contains("Window")}, 含ATMMachine={dataList2.Contains("ATMMachine")}, 判定为物件面板={isObjectPanel}, Registry={CustomObjects.Names.Count}个");
+        LogInfo($"[CustomBuildings] OpenObjectLoad Prefix: dataList2.Count={dataList2.Count}, 含Window={dataList2.Contains("Window")}, 含ATMMachine={dataList2.Contains("ATMMachine")}, 判定为物件面板={isObjectPanel}, Registry={CustomObjects.Names.Count}个");
         if (!isObjectPanel) return;
 
         // 把每个未注册的建筑名插到 "------------------------" 分隔线之后（最终位置交给 Postfix 处理）
@@ -536,10 +763,10 @@ public static class CustomBuildingsPlugin
             if (dataList2.Contains(objectName)) continue;
             dataList2.Insert(insertIndex, objectName);
             insertIndex++;
-            Logger.LogInfo($"[CustomBuildings] 已插入建筑名: {objectName} @位置{insertIndex - 1}");
+            LogInfo($"[CustomBuildings] 已插入建筑名: {objectName} @位置{insertIndex - 1}");
         }
         if (CustomObjects.Registry.Count > 0)
-            Logger.LogInfo($"[CustomBuildings] 已注入物件栏 {CustomObjects.Registry.Count} 个建筑");
+            LogInfo($"[CustomBuildings] 已注入物件栏 {CustomObjects.Registry.Count} 个建筑");
     }
 
     /// <summary>[Postfix] LevelEditor.OpenObjectLoad(2参) — Sort 后把自定义建筑按钮挪到分隔线正下方 + 刷新滚动列表。</summary>
@@ -593,7 +820,7 @@ public static class CustomBuildingsPlugin
     {
         if (myTile == null) return;
         if (myTile.tileType == "Objects" && CustomObjects.IsRegistered(myTile.tileName))
-            Logger.LogInfo($"[CustomBuildings] SetTileImage: 命中自定义建筑 {myTile.tileName}，重画");
+            LogInfo($"[CustomBuildings] SetTileImage: 命中自定义建筑 {myTile.tileName}，重画");
         if (myTile == null || myTile.tileType != "Objects" || myTile.tileMap == null) return;
         if (!CustomObjects.IsRegistered(myTile.tileName)) return;
         string objectName = myTile.tileName;
@@ -638,7 +865,7 @@ public static class CustomBuildingsPlugin
             }
             catch (Exception e)
             {
-                Logger.LogError($"[CustomBuildings] materialInsts 修复失败：{objectName} - {e}");
+                LogError($"[CustomBuildings] materialInsts 修复失败：{objectName} - {e}");
             }
         }
 
@@ -694,10 +921,10 @@ public static class CustomBuildingsPlugin
         // prefab 已失效（场景切换被销毁）或组件丢失 → 从克隆源重建
         if (!gr.objectPrefabDic.ContainsKey(meta.CloneSource))
         {
-            Logger.LogError($"[CustomBuildings] 克隆源 {meta.CloneSource} 不存在（建筑 {objectRealName}），无法重建 prefab");
+            LogError($"[CustomBuildings] 克隆源 {meta.CloneSource} 不存在（建筑 {objectRealName}），无法重建 prefab");
             return null;
         }
-        Logger.LogWarning($"[CustomBuildings] prefab 已失效（场景切换被销毁），从 {meta.CloneSource} 重建：{objectRealName}");
+        LogWarning($"[CustomBuildings] prefab 已失效（场景切换被销毁），从 {meta.CloneSource} 重建：{objectRealName}");
         try
         {
             GameObject basePrefab = gr.objectPrefabDic[meta.CloneSource];
@@ -743,12 +970,12 @@ public static class CustomBuildingsPlugin
                 gr.objectDic[objectRealName] = gr.objectDic[meta.CloneSource];
             }
 
-            Logger.LogInfo($"[CustomBuildings] prefab 重建成功：{objectRealName}");
+            LogInfo($"[CustomBuildings] prefab 重建成功：{objectRealName}");
             return nm;
         }
         catch (Exception e)
         {
-            Logger.LogError($"[CustomBuildings] prefab 重建失败：{objectRealName} - {e}");
+            LogError($"[CustomBuildings] prefab 重建失败：{objectRealName} - {e}");
             return null;
         }
     }
@@ -774,7 +1001,7 @@ public static class CustomBuildingsPlugin
                     if (c != null && c.GetType().Name == "NetworkIdentity")
                     {
                         UnityEngine.Object.DestroyImmediate(c);
-                        Logger.LogInfo($"[CustomBuildings] 已移除 prefab 的 {c.GetType().FullName}");
+                        LogInfo($"[CustomBuildings] 已移除 prefab 的 {c.GetType().FullName}");
                         return;
                     }
                 }
@@ -784,12 +1011,12 @@ public static class CustomBuildingsPlugin
             if (ni != null)
             {
                 UnityEngine.Object.DestroyImmediate(ni);
-                Logger.LogInfo($"[CustomBuildings] 已移除 prefab 的 {niType.FullName}（防 Instantiate 时自我销毁）");
+                LogInfo($"[CustomBuildings] 已移除 prefab 的 {niType.FullName}（防 Instantiate 时自我销毁）");
             }
         }
         catch (Exception e)
         {
-            Logger.LogWarning($"[CustomBuildings] RemoveNetworkIdentity 异常: {e.Message}");
+            LogWarning($"[CustomBuildings] RemoveNetworkIdentity 异常: {e.Message}");
         }
     }
 }

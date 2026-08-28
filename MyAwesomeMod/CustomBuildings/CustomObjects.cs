@@ -35,7 +35,7 @@ public static class CustomObjects
         CustomObjectMetadata metadata = CustomObjectMetadata.Get<TCustomObject>();
         Registry[metadata.Name] = metadata;
         if (CustomBuildingsPlugin.Logger != null)
-            CustomBuildingsPlugin.Logger.LogInfo($"[CustomBuildings] CreateCustomObject<{typeof(TCustomObject).Name}> 已注册，名称={metadata.Name}");
+            CustomBuildingsPlugin.LogInfo($"[CustomBuildings] CreateCustomObject<{typeof(TCustomObject).Name}> 已注册，名称={metadata.Name}");
         return new ObjectBuilder(metadata);
     }
 
@@ -88,14 +88,14 @@ public static class CustomObjects
             {
                 if (method.GetParameters().Length != 0)
                 {
-                    CustomBuildingsPlugin.Logger?.LogError($"{type.FullName}: Methods marked with [RLSetup] cannot have any parameters!");
+                    CustomBuildingsPlugin.LogError($"{type.FullName}: Methods marked with [RLSetup] cannot have any parameters!");
                     continue;
                 }
                 try
                 {
                     if (!method.IsStatic)
                     {
-                        CustomBuildingsPlugin.Logger?.LogError($"{type.FullName}: Methods marked with [RLSetup] must be static!");
+                        CustomBuildingsPlugin.LogError($"{type.FullName}: Methods marked with [RLSetup] must be static!");
                         continue;
                     }
                     method.Invoke(null, null);
@@ -104,7 +104,7 @@ public static class CustomObjects
                 catch (Exception ex)
                 {
                     // Logger 可能尚未初始化（Initialize 未调用时），判空避免掩盖真实异常
-                    CustomBuildingsPlugin.Logger?.LogError(ex.ToString());
+                    CustomBuildingsPlugin.LogError(ex.ToString());
                 }
             }
         }
@@ -146,7 +146,7 @@ public static class CustomObjects
             string pluginDir = Paths.PluginPath;
             if (string.IsNullOrEmpty(pluginDir) || !Directory.Exists(pluginDir))
             {
-                CustomBuildingsPlugin.Logger?.LogInfo("[CustomBuildings] 未找到 BepInEx/plugins 目录，跳过插件库扫描");
+                CustomBuildingsPlugin.LogInfo("[CustomBuildings] 未找到 BepInEx/plugins 目录，跳过插件库扫描");
                 return;
             }
 
@@ -179,19 +179,19 @@ public static class CustomObjects
                         setups += InvokeSetupMethods(type);
                     }
                     loaded++;
-                    CustomBuildingsPlugin.Logger?.LogInfo($"[CustomBuildings] 已加载插件库: {Path.GetFileName(dll)}（[RLSetup] x{setups}）");
+                    CustomBuildingsPlugin.LogInfo($"[CustomBuildings] 已加载插件库: {Path.GetFileName(dll)}（[RLSetup] x{setups}）");
                 }
                 catch (Exception ex)
                 {
                     failed++;
-                    CustomBuildingsPlugin.Logger?.LogWarning($"[CustomBuildings] 加载插件库失败: {dll} - {ex.Message}");
+                    CustomBuildingsPlugin.LogWarning($"[CustomBuildings] 加载插件库失败: {dll} - {ex.Message}");
                 }
             }
-            CustomBuildingsPlugin.Logger?.LogInfo($"[CustomBuildings] 插件库扫描完成: 新加载 {loaded} 个, 跳过 {skipped} 个, 失败 {failed} 个");
+            CustomBuildingsPlugin.LogInfo($"[CustomBuildings] 插件库扫描完成: 新加载 {loaded} 个, 跳过 {skipped} 个, 失败 {failed} 个");
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger?.LogError($"[CustomBuildings] 扫描插件库异常: {e}");
+            CustomBuildingsPlugin.LogError($"[CustomBuildings] 扫描插件库异常: {e}");
         }
     }
 
@@ -263,7 +263,7 @@ public static class CustomObjects
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger?.LogWarning($"[CustomBuildings] 替换资源管理器失败: {e.Message}");
+            CustomBuildingsPlugin.LogWarning($"[CustomBuildings] 替换资源管理器失败: {e.Message}");
         }
     }
 }

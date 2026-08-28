@@ -16,6 +16,7 @@ classless: 2026-08-16T14:07:00
 	- m.Agent  继承”Agent“，交互者，不可使用ObjectReal.interactingAgent属性。
 	- m.Helper  交互助手（`InteractionHelper`，含 `interactingFar` 等状态）
 	- m.gc        游戏控制器
+- 一般使用try { this.StopInteraction(); } catch { }停止交互。
 
 例：
 ```

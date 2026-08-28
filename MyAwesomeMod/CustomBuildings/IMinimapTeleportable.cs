@@ -10,5 +10,10 @@ namespace RogueForge;
 /// </summary>
 public interface IMinimapTeleportable
 {
-    // 纯标记接口：只需 class RecycleBin : CustomObjectReal, IMinimapTeleportable 即可获得传送功能
+    /// <summary>
+    /// 返回小地图/大地图图标的缩放倍率。
+    /// 1f = 默认大小，2f = 两倍大，0.5f = 一半大小。
+    /// 实现 IMinimapTeleportable 的类必须实现此方法。
+    /// </summary>
+    float GetMinimapIconScale();
 }

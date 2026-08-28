@@ -19,7 +19,7 @@ public void OnLevelSpawn(LoadLevel level)
 {
 	Chunk? exit = KMap.GetEndingChunk();
 	if (exit == null) return;
-	Vector2 pos = KMap.FindEmptySpotByChunkID(exit.chunkID, maxRetries: 500);
+	Vector2 pos = KMap.FindEmptySpotByChunk(exit, maxRetries: 500);
 	if (pos == Vector2.zero) return;
 	KMap.SpawnObject("TrashCan", pos);
 }

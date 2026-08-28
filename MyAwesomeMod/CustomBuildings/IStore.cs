@@ -144,18 +144,18 @@ public static class IStoreExtensions
             }
             if (obj.specialInvDatabase == null)
             {
-                CustomBuildingsPlugin.Logger.LogWarning($"[{obj.objectName}] OpenBuyChest: specialInvDatabase 创建失败");
+                CustomBuildingsPlugin.LogWarning($"[{obj.objectName}] OpenBuyChest: specialInvDatabase 创建失败");
                 return;
             }
 
             // 关键：确保库存已初始化（槽位创建）。Instantiate prefab 时 Awake 可能未执行
             // （类似动态 AddComponent 的情况），导致 InvItemList 空 → hasEmptySlot()=false
             // → AddItem 走 tempSlot 分支不真正加入 → 界面看不到商品。
-            CustomBuildingsPlugin.Logger.LogInfo($"[{obj.objectName}] OpenBuyChest: createdInventory={obj.specialInvDatabase.createdInventory}, InvItemList.Count={obj.specialInvDatabase.InvItemList?.Count}");
+            CustomBuildingsPlugin.LogInfo($"[{obj.objectName}] OpenBuyChest: createdInventory={obj.specialInvDatabase.createdInventory}, InvItemList.Count={obj.specialInvDatabase.InvItemList?.Count}");
             if (!obj.specialInvDatabase.createdInventory)
             {
                 obj.specialInvDatabase.CreateInventory();
-                CustomBuildingsPlugin.Logger.LogInfo($"[{obj.objectName}] OpenBuyChest: 手动调用 CreateInventory");
+                CustomBuildingsPlugin.LogInfo($"[{obj.objectName}] OpenBuyChest: 手动调用 CreateInventory");
             }
 
             // 检测上次打开后是否有商品被买走（数量减少 → 触发购买回调）
@@ -170,7 +170,7 @@ public static class IStoreExtensions
             List<InvItem> items = store.GetBuyItems();
             if (items == null || items.Count == 0)
             {
-                CustomBuildingsPlugin.Logger.LogInfo($"[{obj.objectName}] OpenBuyChest: 无商品可卖，不打开界面");
+                CustomBuildingsPlugin.LogInfo($"[{obj.objectName}] OpenBuyChest: 无商品可卖，不打开界面");
                 return;
             }
             foreach (InvItem item in items)
@@ -183,25 +183,28 @@ public static class IStoreExtensions
                 }
                 catch { }
 
-                // 免费商品标记：原版 AddItem 会把 itemValue 覆盖回配置默认价（如 BananaPeel=5），
-                // 导致免费商品变收费。统一把免费商品标记为 FREE_ITEM_VALUE（48484），
-                // AddItem 会保留它，且所有免费判断（IsFreeItem）能识别。
-                if (IsFreeItem(item) && item.itemValue != FREE_ITEM_VALUE)
+                // 免费商品标记：GetBuyItems 用 itemValue == FREE_ITEM_VALUE(48484) 标记"免费"（不扣现金，
+                // 商店自己的货币/逻辑在 OnItemBought 里另算）。但 AddItem 内部会再调 ItemSetup，
+                // 把 itemValue 重置回原版配置默认价（如 WallBypasser→40），导致 IsFreeItem 判定失败、
+                // PurchaseItem 按 determineMoneyCost 真扣现金（价格错误）。
+                // 正确做法：AddItem 前记住标记意图，AddItem 后把标记补回（AddItem 加入的是同一引用）。
+                bool shouldBeFree = item.itemValue == FREE_ITEM_VALUE;
+                obj.specialInvDatabase.AddItem(item);
+                if (shouldBeFree)
                 {
                     item.itemValue = FREE_ITEM_VALUE;
                 }
-                obj.specialInvDatabase.AddItem(item);
             }
             state.LastItems = new List<InvItem>(items);
             state.LastCount = obj.specialInvDatabase.InvItemList?.Count ?? 0;
-            CustomBuildingsPlugin.Logger.LogInfo($"[{obj.objectName}] OpenBuyChest: 已填充 {items.Count} 件商品, InvItemList.Count={obj.specialInvDatabase.InvItemList?.Count}");
+            CustomBuildingsPlugin.LogInfo($"[{obj.objectName}] OpenBuyChest: 已填充 {items.Count} 件商品, InvItemList.Count={obj.specialInvDatabase.InvItemList?.Count}");
 
             // 打开购买界面（NPC 商店，右键购买）
             obj.ShowNPCChest();
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogWarning($"[{obj.objectName}] OpenBuyChest 异常: {e}");
+            CustomBuildingsPlugin.LogWarning($"[{obj.objectName}] OpenBuyChest 异常: {e}");
         }
     }
 
@@ -253,7 +256,7 @@ public static class IStoreExtensions
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.Logger.LogWarning($"[{obj.objectName}] PurchaseItem 异常: {e}");
+            CustomBuildingsPlugin.LogWarning($"[{obj.objectName}] PurchaseItem 异常: {e}");
             return false;
         }
     }
