@@ -162,12 +162,54 @@ public static class CustomBuildingsPlugin
         // → 检测到我们的按钮 → 返回 true → 游戏原生高亮（无需强制高亮 hack）。
         CustomObjectReal.RegisterInteractions();
 
+        // 入侵门禁：默认所有自定义建筑【不可被入侵】——原版 HackObject 不检查 hackable，
+        // 任何 functional 的 ObjectReal 都能被黑客工具/笔记本入侵。以下三个入口全部拦截：
+        //  ① HackObject（远程按 E → InteractFarHook 的汇聚点，弹进度条/弹按钮）
+        //  ② LaptopHack（用笔记本电脑点击建筑 → ItemFunctions.TargetObject 的路径）
+        //  ③ HackingToolHack（用黑客工具点击建筑 → ItemFunctions.TargetObject 的路径）
+        // 未 override CanBeHacked=true 且未 override OnHackingComplete 的自定义建筑，入侵无任何效果。
+        // 另在 CustomObjectReal.FinishedOperating 里还有一道兜底门禁（进度条即使启动也不执行效果）。
+        bool r15 = patcher.Prefix(typeof(ObjectReal), nameof(ObjectReal.HackObject), "ObjectReal_HackObject", new Type[] { typeof(Agent) });
+        bool r16 = patcher.Prefix(typeof(ObjectReal), nameof(ObjectReal.LaptopHack), "ObjectReal_LaptopHack", new Type[] { typeof(Agent) });
+        bool r17 = patcher.Prefix(typeof(ObjectReal), nameof(ObjectReal.HackingToolHack), "ObjectReal_HackingToolHack", new Type[] { typeof(Agent) });
+
         // 注意：不再用 Harmony 钩子 patch PlayfieldObject/ObjectReal 的交互方法——
         // 它们被 RogueLibsPatcher 的 DMD 技术重写，钩子打空不触发。
         // 交互与高亮都改用 RogueLibs 官方 RogueInteractions.CreateProvider 机制。
+        // （HackObject 未被 DMD 重写，Harmony Prefix 有效。）
 
-        LogInfo($"[RogueForge] 初始化完成，14 个 patch 注册结果: {r1}{r2}{r3}{r4}{r5}{r6}{r7}{r8}{r9}{r10}{r11}{r12}{r13}{r14}");
+        LogInfo($"[RogueForge] 初始化完成，17 个 patch 注册结果: {r1}{r2}{r3}{r4}{r5}{r6}{r7}{r8}{r9}{r10}{r11}{r12}{r13}{r14}{r15}{r16}{r17}");
         LogInfo($"[RogueForge] 如果遇到有关于RogueForge的报错，请先自行翻阅RogueForge错误手册。");
+    }
+
+    // ==================== Patch: 自定义建筑入侵门禁（HackObject / LaptopHack / HackingToolHack） ====================
+    // 原版 HackObject 不检查 hackable：任何 functional 的 ObjectReal 都能被黑客工具/笔记本远程入侵
+    // （Hacker 职业直接弹按钮，其余职业弹 2 秒进度条）→ 导致"任意自定义建筑都能被入侵"。
+    // 三个 Prefix 全部拦截：未启用入侵的自定义建筑（未 override CanBeHacked=true 且未 override
+    // OnHackingComplete）直接无任何效果；原版建筑与已启用入侵的自定义建筑不受影响。
+
+    /// <summary>[Prefix] ObjectReal.HackObject — 远程按 E 入侵汇聚点（InteractFarHook 调它）。</summary>
+    public static bool ObjectReal_HackObject(ObjectReal __instance, Agent agent) => AllowBuildingHack(__instance);
+
+    /// <summary>[Prefix] ObjectReal.LaptopHack — 用笔记本电脑点击建筑的入侵路径。</summary>
+    public static bool ObjectReal_LaptopHack(ObjectReal __instance, Agent agent) => AllowBuildingHack(__instance);
+
+    /// <summary>[Prefix] ObjectReal.HackingToolHack — 用黑客工具点击建筑的入侵路径。</summary>
+    public static bool ObjectReal_HackingToolHack(ObjectReal __instance, Agent agent) => AllowBuildingHack(__instance);
+
+    /// <summary>入侵门禁统一判定：非自定义建筑放行；自定义建筑需 override CanBeHacked 或 OnHackingComplete 才放行。</summary>
+    private static bool AllowBuildingHack(ObjectReal obj)
+    {
+        if (obj is CustomObjectReal custom)
+        {
+            bool enabled = custom.CanBeHacked || custom.IsHackingEnabledByOverride();
+            if (!enabled)
+            {
+                LogWarning($"[CustomBuildings] 入侵门禁拦截：{custom.ObjectName}（未启用 CanBeHacked/OnHackingComplete）");
+                return false;
+            }
+        }
+        return true;
     }
 
     // ==================== Patch: GameController.SetVersionText（左下角版本签名） ====================

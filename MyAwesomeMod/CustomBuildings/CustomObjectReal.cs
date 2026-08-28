@@ -222,6 +222,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             {
                 CustomBuildingsPlugin.LogError($"[{this.ObjectName}] SetVars 异常: {e}");
             }
+            this.EnforceHackGate();   // 入侵门禁强制：未启用入侵的建筑 hackable=false（不进 Laptop 选择框/不高亮/遥控器不可操作）
 
             // 实例脱离对象池，防止被回收/销毁
             if (this.PrefabObject != null && this.gameObject != this.PrefabObject)
@@ -268,6 +269,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
     {
         base.RecycleAwake();
         this.SetVars();
+        this.EnforceHackGate();   // 入侵门禁强制（与 Awake 一致，覆盖子类 SetVars 里设置的 hackable=true）
         try
         {
             this.ApplyAppearanceAndColliders("RecycleAwake");
@@ -379,9 +381,18 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         // 优先于延迟操作处理，防止与自定义 barType 混淆。
         if (base.operatingBarType == "Hacking")
         {
+            // 入侵门禁兜底：即使进度条因故启动（Prefix 未拦截到），未启用入侵的建筑也不执行任何效果。
+            // 启用条件与门禁一致：override CanBeHacked=true 或 override OnHackingComplete。
             try
             {
-                this.OnHackingComplete(this.interactingAgent);
+                if (this.CanBeHacked || this.IsHackingEnabledByOverride())
+                {
+                    this.OnHackingComplete(this.interactingAgent);
+                }
+                else
+                {
+                    CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 黑客入侵进度条完成但被门禁拦截（未启用 CanBeHacked/OnHackingComplete），无任何效果");
+                }
             }
             catch (Exception e)
             {
@@ -413,13 +424,65 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
     // → 调用 HackObject(agent)：Hacker 职业/速写员特质直接显示按钮，否则 2 秒进度条（barType "Hacking"）。
     // 进度条走完 → FinishedOperating（operatingBarType == "Hacking"）→ 本库调用 OnHackingComplete 回调。
     // 前提：本建筑 functional == true 且 tempNoOperating == false（基类 ObjectReal 默认满足）。
+    //
+    // 入侵门禁（v1.0.1+）：默认所有自定义建筑【不可被入侵】——CustomBuildingsPlugin 的 Prefix 拦截
+    // ObjectReal.HackObject，未启用入侵的建筑直接无任何效果。启用方式（二选一）：
+    //  1) override <see cref="CanBeHacked"/> 返回 true；
+    //  2) override <see cref="OnHackingComplete"/>（自动识别为已启用入侵）。
+    // 两者都不做 → 玩家对建筑使用黑客工具/笔记本没有任何效果。
 
     /// <summary>
-    /// 黑客入侵完成回调（实现 <see cref="IObjectInteraction.OnHackingComplete"/>，虚方法，子类可 override）。
+    /// 是否允许被黑客入侵（默认 false = 不可入侵）。
+    /// 启用方式（二选一）：override 本属性返回 true；或 override <see cref="OnHackingComplete"/>（自动识别）。
+    /// 两者都不做 → 玩家对建筑使用黑客工具/笔记本无任何效果。
+    /// </summary>
+    public virtual bool CanBeHacked => false;
+
+    /// <summary>是否通过 override <see cref="OnHackingComplete"/> 启用了入侵（反射缓存，每个实例算一次）。</summary>
+    private bool? _hackingEnabledByOverride;
+
+    /// <summary>检测 OnHackingComplete 是否被子类 override（用于入侵门禁）。</summary>
+    internal bool IsHackingEnabledByOverride()
+    {
+        if (this._hackingEnabledByOverride.HasValue) return this._hackingEnabledByOverride.Value;
+        bool enabled = false;
+        try
+        {
+            System.Reflection.MethodInfo? m = this.GetType().GetMethod(nameof(OnHackingComplete));
+            enabled = m != null && m.DeclaringType != typeof(CustomObjectReal);
+        }
+        catch { enabled = false; }
+        this._hackingEnabledByOverride = enabled;
+        return enabled;
+    }
+
+    /// <summary>
+    /// 入侵门禁强制（Awake / RecycleAwake 里 SetVars 之后调用）：
+    /// 未启用入侵的建筑强制 hackable=false —— 这样 Laptop 的选择框（ItemFunctions.TargetObject 判定
+    /// otherObject.hackable）、绿色高亮、遥控器操作等所有以 hackable 为前提的入侵入口全部不可用，
+    /// 从源头杜绝"自定义建筑出现在黑客目标列表里"。
+    /// 启用入侵（override CanBeHacked=true 或 OnHackingComplete）的建筑保持子类 SetVars 的设置。
+    /// </summary>
+    protected void EnforceHackGate()
+    {
+        try
+        {
+            if (!this.CanBeHacked && !this.IsHackingEnabledByOverride())
+            {
+                base.hackable = false;
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// 黑客入侵完成回调（虚方法，子类可 override）。
     /// 玩家手持黑客工具/笔记本电脑远程按 E 入侵本建筑，2 秒进度条走完后调用。
     /// 可用于执行黑客成功效果：解锁设备、发放奖励、Say 台词、洒落物品、触发任务等。
     /// 注意：不会自动弹出操作按钮菜单；如需菜单，override 后调用 ShowObjectButtons()
     /// 并在 DetermineButtons() 中添加按钮。
+    /// <para><b>入侵门禁</b>：override 本方法即视为该建筑启用了入侵（无需再 override <see cref="CanBeHacked"/>）。
+    /// 默认（未 override）建筑不可被入侵。</para>
     /// </summary>
     /// <param name="hacker">执行黑客入侵的玩家（可为 null）。</param>
     public virtual void OnHackingComplete(Agent hacker) { }

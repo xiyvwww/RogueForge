@@ -31,6 +31,8 @@ namespace RogueForge;
 ///   实现 <see cref="IObjectContainer"/> 自动添加 Open 按钮）；子类 override 后完全自定义按钮
 ///   （默认交互不再自动添加，需要时请在 SetupInteractions 中自行添加）。
 /// - <see cref="OnHackingComplete"/>：<b>默认空实现</b>（什么都不做），子类按需 override。
+///   <b>入侵门禁</b>：override 本方法即视为该建筑启用了黑客入侵（无需再 override
+///   <see cref="CustomObjectReal.CanBeHacked"/>）；未 override 的建筑默认不可被入侵。
 ///   本意是"默认接口方法"，但目标框架 net471 不支持默认接口实现（编译报 CS8701），
 ///   故声明为抽象成员 + 基类 <see cref="CustomObjectReal"/> 提供 virtual 空实现兜底——
 ///   实现本接口的类继承基类即可（不写也不会报错，效果等同"方法体为空"）。
