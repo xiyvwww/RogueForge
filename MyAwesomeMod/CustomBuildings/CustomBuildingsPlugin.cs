@@ -66,7 +66,7 @@ public static class CustomBuildingsPlugin
     /// 参考 RogueLibsCore：GameController.SetVersionText Postfix 往 versionText2.text 追加 "RL v4.0.0-rc.2"。
     /// 修改此字符串即可自定义显示内容（例如改成你自己的 Mod 名和版本号）。
     /// </summary>
-    public static string VersionSignature = "*RF 1.0.4";
+    public static string VersionSignature = "RF 1.0";
 
 
 
