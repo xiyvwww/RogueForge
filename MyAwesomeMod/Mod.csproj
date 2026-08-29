@@ -7,7 +7,7 @@
     <!-- Header -->
     <AssemblyName>RogueForge</AssemblyName>
     <PackageId>$(AssemblyName)</PackageId>
-    <Version>1.1.0</Version>
+    <Version>1.0.0</Version>
     <Authors>bilibili-习羽Www</Authors>
     <Company>习羽Www</Company>
     <Copyright>bilibili-习羽Www</Copyright>
