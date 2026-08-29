@@ -710,6 +710,22 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
                 {
                     marker.playerSeen = true;
 
+                    // 流式世界修复：StartReal 依赖外部调用（区块加载回调），而 mod 的建筑是
+                    // SetupMore4 之后才刷新的，标记永远等不到外部初始化 → reallyStarted 卡 false →
+                    // 原逻辑走"2 秒销毁重建"循环直到 10 秒超时放弃 → 部分标记缺失（"显示不全"）。
+                    // 这里宽限 1 秒后手动调用 StartReal() 强制初始化（标记父物体就是本建筑，满足前置条件）。
+                    if (!marker.reallyStarted && elapsed >= 1f)
+                    {
+                        try
+                        {
+                            marker.StartReal();
+                        }
+                        catch (Exception e)
+                        {
+                            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 手动初始化小地图标记异常: {e.Message}");
+                        }
+                    }
+
                     if (marker.reallyStarted && marker.smallImage != null && marker.smallImage2 != null)
                     {
                         RogueLibsCore.RogueSprite? rogueSprite = CustomObjectMetadata.Get(this.GetType()).GetSprite();
