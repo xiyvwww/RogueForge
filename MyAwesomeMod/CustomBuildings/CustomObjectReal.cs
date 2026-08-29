@@ -496,8 +496,11 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
     /// 实例跨场景存活（dontRecycleOrDestroy），进入新关卡时用关卡号变化检测并重新填充。</summary>
     private int _containerFilledLevel = -1;
 
-    /// <summary>上次填充时的关卡号（内部访问器：DestroyOldBuildings 用它区分"本关刚生成的建筑"与"上一关残留"）。</summary>
-    internal int LastFillLevel => this._containerFilledLevel;
+    /// <summary>
+    /// 是否由关卡编辑器/瓦片放置生成（走 BasicObject.Spawn，如编辑器里画的自定义建筑）。
+    /// 关卡加载清理（DestroyOldBuildings）会保留这些实例——它们属于当前关卡，不能当"旧建筑"销毁。
+    /// </summary>
+    internal bool IsEditorPlaced;
 
     // 注：填充容器初始物品的钩子 FillContainer(InvDatabase) 由 IObjectContainer 实现类提供
     // （接口必须实现成员），TryFillContainer 在下方通过接口调用它。

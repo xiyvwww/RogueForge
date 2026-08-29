@@ -114,6 +114,9 @@ public static class CustomBuildingsPlugin
 
         // 物件生成入口（prefab 失效重建兜底）
         bool r6 = patcher.Prefix(typeof(BasicObject), nameof(BasicObject.Spawn), "BasicObject_Spawn");
+        // 标记"编辑器/瓦片放置"生成的建筑（IsEditorPlaced）——关卡加载清理时保留它们
+        bool r6b = patcher.Postfix(typeof(BasicObject), nameof(BasicObject.Spawn), "BasicObject_SpawnPostfix",
+            new Type[] { typeof(SpawnerBasic), typeof(string), typeof(Vector2), typeof(Vector2), typeof(Chunk) });
 
         // 诊断钩子：Bed.Interact（验证"近距离才交互"机制——记录触发时玩家与床的距离）
         bool r7 = patcher.Prefix(typeof(Bed), nameof(Bed.Interact), "Bed_Interact", new Type[] { typeof(Agent) });
@@ -178,7 +181,7 @@ public static class CustomBuildingsPlugin
         // 交互与高亮都改用 RogueLibs 官方 RogueInteractions.CreateProvider 机制。
         // （HackObject 未被 DMD 重写，Harmony Prefix 有效。）
 
-        LogInfo($"[RogueForge] 初始化完成，17 个 patch 注册结果: {r1}{r2}{r3}{r4}{r5}{r6}{r7}{r8}{r9}{r10}{r11}{r12}{r13}{r14}{r15}{r16}{r17}");
+        LogInfo($"[RogueForge] 初始化完成，18 个 patch 注册结果: {r1}{r2}{r3}{r4}{r5}{r6}{r6b}{r7}{r8}{r9}{r10}{r11}{r12}{r13}{r14}{r15}{r16}{r17}");
         LogInfo($"[RogueForge] 如果遇到有关于RogueForge的报错，请先自行翻阅RogueForge错误手册。");
     }
 
@@ -557,16 +560,8 @@ public static class CustomBuildingsPlugin
             // 跳过 prefab 模板：prefab 组件（PrefabObject 指向自身）跨场景存活（DontDestroyOnLoad），
             // 若销毁它，每次进关 Spawn 时 EnsurePrefabValid 都会判定失效并重建（"prefab 已失效"警告刷屏）。
             // 实例的 PrefabObject 指向原 prefab（!= 自身 gameObject），不受影响。
-            int curLevel = -1;
-            try
-            {
-                if (GameController.gameController?.sessionDataBig != null)
-                    curLevel = GameController.gameController.sessionDataBig.curLevel;
-            }
-            catch { }
-
             List<CustomObjectReal> instances = new List<CustomObjectReal>(CustomObjectReal.LiveInstances);
-            int destroyed = 0, skippedPrefabs = 0, keptCurrentLevel = 0;
+            int destroyed = 0, skippedPrefabs = 0, keptEditorPlaced = 0;
             foreach (CustomObjectReal custom in instances)
             {
                 if (custom == null) continue;
@@ -575,13 +570,12 @@ public static class CustomBuildingsPlugin
                     skippedPrefabs++;   // prefab 模板，保留
                     continue;
                 }
-                // 关键修复：跳过属于【当前关卡】的实例——编辑器放置/本关加载期生成的建筑
-                // （Start → TryFillContainer 已把 _containerFilledLevel 设为当前关卡号）。
-                // 否则它们会被当成"上一关残留"销毁，而 SpawnBuildings（Postfix）只重建
-                // IBuildingSpawner 的运行时建筑 → 编辑器放置的建筑在游戏里什么都不剩。
-                if (curLevel >= 0 && custom.LastFillLevel == curLevel)
+                // 保留本关编辑器/瓦片放置的建筑（BasicObject.SpawnPostfix 已打 IsEditorPlaced 标记）——
+                // 它们属于当前关卡，不能被当"上一关残留"销毁（否则编辑器放置的建筑进游戏后消失）。
+                // 运行时刷新（IBuildingSpawner / spawnObjectReal / KMap.SpawnObject）不打此标记，照常清理。
+                if (custom.IsEditorPlaced)
                 {
-                    keptCurrentLevel++;
+                    keptEditorPlaced++;
                     continue;
                 }
                 if (custom.gameObject != null)
@@ -590,7 +584,7 @@ public static class CustomBuildingsPlugin
                     destroyed++;
                 }
             }
-            LogInfo($"[CustomBuildings] LoadLevel.SetupMore4: 销毁 {destroyed} 个旧建筑（跳过 {skippedPrefabs} 个 prefab 模板，保留 {keptCurrentLevel} 个本关建筑, curLevel={curLevel}）");
+            LogInfo($"[CustomBuildings] LoadLevel.SetupMore4: 销毁 {destroyed} 个旧建筑（跳过 {skippedPrefabs} 个 prefab 模板，保留 {keptEditorPlaced} 个编辑器放置建筑）");
         }
         catch (Exception e)
         {
@@ -963,6 +957,25 @@ public static class CustomBuildingsPlugin
 
         // prefab 失效重建兜底（与 SetupMore3_3 共用同一方法）
         EnsurePrefabValid(meta);
+    }
+
+    /// <summary>[Postfix] BasicObject.Spawn — 标记"编辑器/瓦片放置"生成的建筑（IsEditorPlaced）。
+    /// 关卡加载清理（DestroyOldBuildings）只销毁旧建筑、保留本关编辑器放置的建筑；
+    /// 运行时刷新（spawnObjectReal / KMap.SpawnObject）不走此路径，不会被误标。</summary>
+    public static void BasicObject_SpawnPostfix(BasicObject __instance, SpawnerBasic spawner, string objectRealName, Vector2 myPos, Vector2 myScale, Chunk startingChunkReal)
+    {
+        if (!CustomObjects.IsRegistered(objectRealName)) return;
+        try
+        {
+            // LiveInstances 按生成顺序追加：最后匹配的 = 刚生成的那个
+            CustomObjectReal? found = null;
+            foreach (CustomObjectReal c in CustomObjectReal.LiveInstances)
+            {
+                if (c != null && c.ObjectName == objectRealName) found = c;
+            }
+            if (found != null) found.IsEditorPlaced = true;
+        }
+        catch { }
     }
 
     /// <summary>
