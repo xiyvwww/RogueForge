@@ -632,6 +632,14 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
     /// <summary>是否正在创建小地图标记（防重复启动协程）。</summary>
     private bool _minimapMarkerSpawning;
 
+    /// <summary>
+    /// MakeChestNonInteractable 期间的标记暂存位（Prefix 置空字段防原版销毁，Postfix 恢复引用）。
+    /// 原版在容器变空时（HideChest / ShowChest空箱 / InvDatabase / ObjectMult RPC 客户端）
+    /// 调用 MakeChestNonInteractable 销毁 nonQuestObjectMarker——框架所有实例 chestReal=true，
+    /// 任意交互后都会命中 → 标记被销毁、图标永久消失。此字段让销毁被跳过而标记存活。
+    /// </summary>
+    internal QuestMarker? _chestMarkerBackup;
+
 
 
 
@@ -640,6 +648,31 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
     /// 玩家打开大地图点击标记可传送到本建筑。创建后强制标记已发现（playerSeen=true），
     /// 无需玩家先接近即可点击传送。
     /// </summary>
+    internal void ReensureMinimapMarker()
+    {
+        try
+        {
+            // 交互结束后调用：标记被销毁则重建；存在但被隐藏（colorInvis）则复位可见。
+            QuestMarker? m = this.nonQuestObjectMarker;
+            if (m == null || m.gameObject == null)
+            {
+                this._minimapMarkerSpawned = false;
+                this._minimapMarkerSpawning = false;
+                this.TrySpawnMinimapMarker();
+                return;
+            }
+            m.playerSeen = true;
+            m.colorInvis = false;
+            m.colorVis = true;
+            if (m.smallImage != null && m.smallImage.color.a == 0f)
+                m.smallImage.color = new Color32(byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue);
+            if (m.smallImage2 != null && m.smallImage2.color.a == 0f)
+                m.smallImage2.color = new Color32(byte.MaxValue, byte.MaxValue, byte.MaxValue, byte.MaxValue);
+            CustomBuildingsPlugin.EnsurePlayerMarkerOnTop();
+        }
+        catch { }
+    }
+
     private void TrySpawnMinimapMarker()
     {
         try
@@ -752,6 +785,8 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
                         this._minimapMarkerSpawned = true;
                         this._minimapMarkerSpawning = false;
                         CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] 小地图传送标记已就绪");
+                        // 玩家图标永远最上层：新标记作为 minimap 子物体加入后会把玩家标记挤到下层，立即把玩家标记移回最顶层
+                        CustomBuildingsPlugin.EnsurePlayerMarkerOnTop();
                         yield break;
                     }
 

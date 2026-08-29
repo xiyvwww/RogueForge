@@ -176,13 +176,104 @@ public static class CustomBuildingsPlugin
         bool r16 = patcher.Prefix(typeof(ObjectReal), nameof(ObjectReal.LaptopHack), "ObjectReal_LaptopHack", new Type[] { typeof(Agent) });
         bool r17 = patcher.Prefix(typeof(ObjectReal), nameof(ObjectReal.HackingToolHack), "ObjectReal_HackingToolHack", new Type[] { typeof(Agent) });
 
+        // 交互结束后恢复小地图标记：自定义建筑交互（打开/关闭容器等）会使标记被隐藏/销毁，
+        // 原版建筑无此问题（它们没有 NonQuestObject 标记或不受框架标记创建路径影响）。
+        // 注意：必须用 Prefix 而非 Postfix——RogueLibs 的 PlayfieldObject_StopInteraction Prefix
+        // 在 useModelStopInteraction=true 时会 return false 跳过原方法，Postfix 因此不触发。
+        // Prefix 在所有前缀之前执行，即使 RL 后面跳过原方法，恢复也已生效。
+        bool r18 = patcher.Prefix(typeof(PlayfieldObject), nameof(PlayfieldObject.StopInteraction), "PlayfieldObject_StopInteraction_MarkerRestore");
+
+        // 空箱销毁标记拦截（根因修复）：MakeChestNonInteractable 是原版"空箱销毁任务标记"的唯一汇聚点
+        // （HideChest / ShowChest空箱 / InvDatabase / ObjectMult RPC 客户端全都调它）。
+        // 原版在容器变空时 Object.Destroy(nonQuestObjectMarker)；框架所有 CustomObjectReal 实例
+        // chestReal=true（TryFillContainer 统一设置）→ 任意交互后标记被销毁、图标消失。
+        // Prefix 暂存+置空标记引用防销毁，Postfix 恢复引用并强制可见（见方法注释的根因说明）。
+        bool r19 = patcher.Prefix(typeof(PlayfieldObject), nameof(PlayfieldObject.MakeChestNonInteractable), "PlayfieldObject_MakeChestNonInteractable_Prefix");
+        bool r19b = patcher.Postfix(typeof(PlayfieldObject), nameof(PlayfieldObject.MakeChestNonInteractable), "PlayfieldObject_MakeChestNonInteractable_Postfix");
+
         // 注意：不再用 Harmony 钩子 patch PlayfieldObject/ObjectReal 的交互方法——
         // 它们被 RogueLibsPatcher 的 DMD 技术重写，钩子打空不触发。
         // 交互与高亮都改用 RogueLibs 官方 RogueInteractions.CreateProvider 机制。
         // （HackObject 未被 DMD 重写，Harmony Prefix 有效。）
 
-        LogInfo($"[RogueForge] 初始化完成，18 个 patch 注册结果: {r1}{r2}{r3}{r4}{r5}{r6}{r6b}{r7}{r8}{r9}{r10}{r11}{r12}{r13}{r14}{r15}{r16}{r17}");
+        LogInfo($"[RogueForge] 初始化完成，20 个 patch 注册结果: {r1}{r2}{r3}{r4}{r5}{r6}{r6b}{r7}{r8}{r8b}{r9}{r10}{r11}{r12}{r13}{r14}{r15}{r16}{r17}{r18}{r19}{r19b}");
         LogInfo($"[RogueForge] 如果遇到有关于RogueForge的报错，请先自行翻阅RogueForge错误手册。");
+    }
+
+    // ==================== 玩家小地图图标永远最上层 ====================
+    // 原版：玩家标记是 minimap 子物体里最后加入的 → Unity UI 后加入的在上层 → 玩家图标永远盖住其他标记。
+    // mod 创建大量自定义建筑标记（150+ 水晶等）后，它们排在玩家标记之后 → 玩家图标被盖住。
+    // 这里把玩家标记 SetAsLastSibling 移回最上层（小图 minimap + 大地图 minimapBig）。
+
+    /// <summary>保证玩家小地图图标在所有标记之上（小图 + 大地图）。幂等：已在最上层则跳过。</summary>
+    public static void EnsurePlayerMarkerOnTop()
+    {
+        try
+        {
+            GameController gc = GameController.gameController;
+            if (gc == null) return;
+            if (gc.minimap != null) MovePlayerMarkerToTop(gc.minimap.transform);
+            if (gc.minimapBig != null) MovePlayerMarkerToTop(gc.minimapBig.transform);
+        }
+        catch { }
+    }
+
+    private static void MovePlayerMarkerToTop(Transform minimapRoot)
+    {
+        Transform pm = minimapRoot.Find("PlayerMarker");
+        if (pm != null && pm.GetSiblingIndex() != minimapRoot.childCount - 1)
+            pm.SetAsLastSibling();
+    }
+
+    /// <summary>[Prefix] PlayfieldObject.StopInteraction — 自定义建筑交互结束后恢复小地图标记。
+    /// 交互（打开/关闭容器等）会使框架创建的 NonQuestObject 标记被隐藏（colorInvis）或销毁；
+    /// 原版有标记的建筑不受影响。用 Prefix 保证在 RogueLibs 的同名前缀拦截原方法前先执行恢复。</summary>
+    public static bool PlayfieldObject_StopInteraction_MarkerRestore(PlayfieldObject __instance)
+    {
+        if (__instance is CustomObjectReal custom)
+        {
+            custom.ReensureMinimapMarker();
+        }
+        return true;
+    }
+
+    // ==================== Patch: 容器清空时保留自定义建筑小地图标记（根因修复） ====================
+    // 根因（原版任务标记系统）：PlayfieldObject.HideChest（StopInteraction 流程内）在容器变空时调用
+    // MakeChestNonInteractable()，其条件为 objectInvDatabase 非空 && chestReal && isEmpty() && hasInteracted。
+    // 框架 TryFillContainer 对所有 CustomObjectReal 实例统一设 chestReal=true + 挂 objectInvDatabase
+    // （即使垃圾桶这种只走 ShowUseOn 的建筑也一样）→ 玩家与任意自定义建筑交互结束后，
+    // 原版都会 Object.Destroy(nonQuestObjectMarker)（帧末生效）→ 图标永久消失。
+    // 之前 r18 在 StopInteraction Prefix 里恢复标记，但恢复发生在销毁之前，随后被销毁动作覆盖 → 无效。
+    // 正确修法：在唯一的销毁汇聚点 MakeChestNonInteractable 拦截——
+    // ① Prefix 把标记引用暂存到实例字段、置空字段 → 原版跳过销毁（其余逻辑照常：变"已空"、
+    //   关灯、不可高亮、RpcMakeChestNonInteractable 同步客户端）；
+    // ② Postfix 恢复引用并强制可见 + 玩家图标最上层。
+    // 原版建筑不受影响（非 CustomObjectReal 不拦截），原版"空箱后图标消失"行为保持不变。
+
+    /// <summary>[Prefix] PlayfieldObject.MakeChestNonInteractable — 自定义建筑暂存标记并阻止原版销毁。</summary>
+    public static bool PlayfieldObject_MakeChestNonInteractable_Prefix(PlayfieldObject __instance)
+    {
+        if (__instance is CustomObjectReal custom)
+        {
+            custom._chestMarkerBackup = __instance.nonQuestObjectMarker;
+            __instance.nonQuestObjectMarker = null;
+        }
+        return true;
+    }
+
+    /// <summary>[Postfix] PlayfieldObject.MakeChestNonInteractable — 自定义建筑恢复标记引用并强制可见。</summary>
+    public static void PlayfieldObject_MakeChestNonInteractable_Postfix(PlayfieldObject __instance)
+    {
+        if (__instance is CustomObjectReal custom)
+        {
+            QuestMarker? m = custom._chestMarkerBackup;
+            custom._chestMarkerBackup = null;
+            if (m != null && m.gameObject != null)
+            {
+                __instance.nonQuestObjectMarker = m;
+                custom.ReensureMinimapMarker();
+            }
+        }
     }
 
     // ==================== Patch: 自定义建筑入侵门禁（HackObject / LaptopHack / HackingToolHack） ====================
