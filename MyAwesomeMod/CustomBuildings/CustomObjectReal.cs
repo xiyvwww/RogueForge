@@ -496,6 +496,9 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
     /// 实例跨场景存活（dontRecycleOrDestroy），进入新关卡时用关卡号变化检测并重新填充。</summary>
     private int _containerFilledLevel = -1;
 
+    /// <summary>上次填充时的关卡号（内部访问器：DestroyOldBuildings 用它区分"本关刚生成的建筑"与"上一关残留"）。</summary>
+    internal int LastFillLevel => this._containerFilledLevel;
+
     // 注：填充容器初始物品的钩子 FillContainer(InvDatabase) 由 IObjectContainer 实现类提供
     // （接口必须实现成员），TryFillContainer 在下方通过接口调用它。
 
@@ -883,7 +886,12 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             if (this.spr != null && !this.destroyed && !this.destroying)
             {
                 tk2dSpriteCollectionData? coll = RogueFramework.ObjectSprites;
-                if (coll != null)
+                if (coll == null)
+                {
+                    // 诊断（always-on）：图集未就绪 → 本次无法设置贴图（建筑空白）
+                    CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] {caller}: RogueFramework.ObjectSprites 为 null（图集未就绪）——本次未设置贴图");
+                }
+                else
                 {
                     // 四方向建筑：按当前朝向选精灵（S 无后缀，N/E/W 加后缀；找不到时回退基础精灵）。
                     // 参考原版 BasicObject.Spawn 的 fourDirection 分支：spawnDirection 决定精灵名。
@@ -895,6 +903,11 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
                         CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] {caller}: 四方向 direction='{this.direction}' 目标精灵='{targetName}' dirId={dirId} baseId={spriteId}");
                         if (dirId > 0) spriteId = dirId;
                         else CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] {caller}: 方向精灵 '{targetName}' 未找到(dirId={dirId})，回退基础精灵");
+                    }
+                    if (spriteId <= 0)
+                    {
+                        // 诊断（always-on）：基础精灵都没找到 → 该建筑将无贴图（空白）
+                        CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] {caller}: 基础精灵 '{this.ObjectName}' 未找到(spriteId={spriteId})，图集='{coll.name}'——建筑将无贴图");
                     }
                     if (spriteId > 0)
                     {

@@ -557,8 +557,16 @@ public static class CustomBuildingsPlugin
             // 跳过 prefab 模板：prefab 组件（PrefabObject 指向自身）跨场景存活（DontDestroyOnLoad），
             // 若销毁它，每次进关 Spawn 时 EnsurePrefabValid 都会判定失效并重建（"prefab 已失效"警告刷屏）。
             // 实例的 PrefabObject 指向原 prefab（!= 自身 gameObject），不受影响。
+            int curLevel = -1;
+            try
+            {
+                if (GameController.gameController?.sessionDataBig != null)
+                    curLevel = GameController.gameController.sessionDataBig.curLevel;
+            }
+            catch { }
+
             List<CustomObjectReal> instances = new List<CustomObjectReal>(CustomObjectReal.LiveInstances);
-            int destroyed = 0, skippedPrefabs = 0;
+            int destroyed = 0, skippedPrefabs = 0, keptCurrentLevel = 0;
             foreach (CustomObjectReal custom in instances)
             {
                 if (custom == null) continue;
@@ -567,16 +575,22 @@ public static class CustomBuildingsPlugin
                     skippedPrefabs++;   // prefab 模板，保留
                     continue;
                 }
+                // 关键修复：跳过属于【当前关卡】的实例——编辑器放置/本关加载期生成的建筑
+                // （Start → TryFillContainer 已把 _containerFilledLevel 设为当前关卡号）。
+                // 否则它们会被当成"上一关残留"销毁，而 SpawnBuildings（Postfix）只重建
+                // IBuildingSpawner 的运行时建筑 → 编辑器放置的建筑在游戏里什么都不剩。
+                if (curLevel >= 0 && custom.LastFillLevel == curLevel)
+                {
+                    keptCurrentLevel++;
+                    continue;
+                }
                 if (custom.gameObject != null)
                 {
                     UnityEngine.Object.DestroyImmediate(custom.gameObject);
                     destroyed++;
                 }
             }
-            if (instances.Count > 0)
-            {
-                LogInfo($"[CustomBuildings] LoadLevel.SetupMore4: 已销毁 {destroyed} 个旧自定义建筑实例（跳过 {skippedPrefabs} 个 prefab 模板）");
-            }
+            LogInfo($"[CustomBuildings] LoadLevel.SetupMore4: 销毁 {destroyed} 个旧建筑（跳过 {skippedPrefabs} 个 prefab 模板，保留 {keptCurrentLevel} 个本关建筑, curLevel={curLevel}）");
         }
         catch (Exception e)
         {
@@ -847,6 +861,11 @@ public static class CustomBuildingsPlugin
             insertIndex++;
         }
 
+        // 诊断（always-on）：物件面板里一个自定义建筑按钮都没有 → 说明注入失败（注册表/面板判定问题），
+        // 与"按钮在但画不出来"（SetTileImage 的 id<=0）是两个不同的故障层
+        if (customButtons.Count == 0)
+            LogWarning($"[CustomBuildings] OpenObjectLoad: 物件面板未找到自定义建筑按钮（Registry={CustomObjects.Names.Count}个，按钮总数={list.Count}）");
+
         // 让滚动列表按新顺序重建，并回到顶部，保证一打开就能看到
         __instance.scrollerControllerLoad.RefreshMenuData(true);
     }
@@ -860,27 +879,32 @@ public static class CustomBuildingsPlugin
     /// <summary>[Postfix] LevelEditor.SetTileImage — 自定义建筑网格重画。</summary>
     public static void LevelEditor_SetTileImage(LevelEditor __instance, LevelEditorTile myTile)
     {
-        if (myTile == null) return;
-        if (myTile.tileType == "Objects" && CustomObjects.IsRegistered(myTile.tileName))
-            LogInfo($"[CustomBuildings] SetTileImage: 命中自定义建筑 {myTile.tileName}，重画");
         if (myTile == null || myTile.tileType != "Objects" || myTile.tileMap == null) return;
         if (!CustomObjects.IsRegistered(myTile.tileName)) return;
         string objectName = myTile.tileName;
 
-        tk2dSpriteCollectionData mapCollection = myTile.tileMap.Editor__SpriteCollection;
-        tk2dSpriteCollectionData source = __instance.objectSprites;
-
-        // 图集不同实例时切换 tileMap 图集，保证 spriteId 对得上
-        if (mapCollection != null && source != null && mapCollection != source)
-        {
-            myTile.tileMap.Editor__SpriteCollection = source;
+        // 图集选择：优先用 RogueLibs 注册的 Objects 图集（RogueFramework.ObjectSprites，自定义精灵一定在里面）；
+        // 编辑器的 objectSprites 可能是不同实例/不含自定义精灵（会导致 GetSpriteIdByName 返回 -1 → 画不出）。
+        // 只有前者不可用时才退回编辑器图集。
+        tk2dSpriteCollectionData? source = __instance.objectSprites;
+        tk2dSpriteCollectionData? mapCollection = RogueFramework.ObjectSprites;
+        if (mapCollection == null || mapCollection.GetSpriteIdByName(objectName) <= 0)
             mapCollection = source;
-        }
         if (mapCollection == null) return;
+
+        if (myTile.tileMap.Editor__SpriteCollection != mapCollection)
+            myTile.tileMap.Editor__SpriteCollection = mapCollection;
 
         tk2dSpriteCollectionData inst = mapCollection.inst;
         int id = mapCollection.GetSpriteIdByName(objectName);
-        if (id <= 0 || inst == null) return;
+        if (id <= 0 || inst == null)
+        {
+            // 诊断（always-on）：找不到自定义精灵 → 记录图集信息，定位"编辑器画自定义建筑不显示"
+            LogWarning($"[CustomBuildings] SetTileImage: 找不到自定义建筑精灵 {objectName} (id={id})。" +
+                $"编辑器图集='{(source != null ? source.name : "null")}'，RogueFramework图集='{(RogueFramework.ObjectSprites != null ? RogueFramework.ObjectSprites.name : "null")}'，" +
+                $"是否同实例={source == RogueFramework.ObjectSprites}，Registry={CustomObjects.Names.Count}个");
+            return;
+        }
 
         // materialInsts 修复（RogueLibs.AddDefinition 扩容后缓存未同步，新槽位材质无效）
         if (!materialFixed.Contains(objectName))
@@ -898,10 +922,12 @@ public static class CustomBuildingsPlugin
                     }
                 }
                 tk2dSpriteDefinition def = inst.spriteDefinitions[id];
-                if (def.material != null && def.materialId >= 0 && def.materialId < inst.materialInsts.Length)
+                // 越界兜底：materialId 无效时钳制到有效范围，避免"透明瓦片"且被 materialFixed 永久缓存
+                if (def.material != null && inst.materialInsts != null && inst.materialInsts.Length > 0)
                 {
-                    inst.materialInsts[def.materialId] = UnityEngine.Object.Instantiate(def.material);
-                    def.materialInst = inst.materialInsts[def.materialId];
+                    int matId = Mathf.Clamp(def.materialId, 0, inst.materialInsts.Length - 1);
+                    inst.materialInsts[matId] = UnityEngine.Object.Instantiate(def.material);
+                    def.materialInst = inst.materialInsts[matId];
                 }
                 materialFixed.Add(objectName);
             }
@@ -930,7 +956,7 @@ public static class CustomBuildingsPlugin
         // 把 direction 固定为 "S"（见 spawnDirection switch 默认分支），且 faceAwayFromWalls
         // 逻辑会尝试自动靠墙定向。这里在 Spawn 前置把空方向设为 "N"，让四方向建筑默认显示北向图，
         // 同时跳过 faceAwayFromWalls 自动定向（自定义建筑不依赖它）。
-        if (meta.IsFourDirection && string.IsNullOrEmpty(spawner.direction))
+        if (spawner != null && meta.IsFourDirection && string.IsNullOrEmpty(spawner.direction))
         {
             spawner.direction = "N";
         }
