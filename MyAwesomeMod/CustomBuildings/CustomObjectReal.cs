@@ -97,7 +97,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] EnsureLightSource 异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning(18, $"[{this.ObjectName}] EnsureLightSource 异常: {e.Message}");
         }
     }
 
@@ -113,7 +113,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] SetBuildingLight 异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning(19, $"[{this.ObjectName}] SetBuildingLight 异常: {e.Message}");
         }
     }
 
@@ -168,7 +168,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] SetContainerItems 异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning(20, $"[{this.ObjectName}] SetContainerItems 异常: {e.Message}");
         }
     }
 
@@ -200,7 +200,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             if (GameController.gameController == null)
                 CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] base.Awake 跳过（启动期 prefab 克隆，gc 未就绪，属正常现象）");
             else
-                CustomBuildingsPlugin.LogError($"[{this.ObjectName}] base.Awake 异常: {e}");
+                CustomBuildingsPlugin.LogError(6, $"[{this.ObjectName}] base.Awake 异常: {e}");
         }
         try
         {
@@ -210,7 +210,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 设置 objectName 失败: {e.Message}");
+            CustomBuildingsPlugin.LogWarning(21, $"[{this.ObjectName}] 设置 objectName 失败: {e.Message}");
         }
         if (awakeOk)
         {
@@ -220,7 +220,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             }
             catch (Exception e)
             {
-                CustomBuildingsPlugin.LogError($"[{this.ObjectName}] SetVars 异常: {e}");
+                CustomBuildingsPlugin.LogError(7, $"[{this.ObjectName}] SetVars 异常: {e}");
             }
             this.EnforceHackGate();   // 入侵门禁强制：未启用入侵的建筑 hackable=false（不进 Laptop 选择框/不高亮/遥控器不可操作）
 
@@ -248,7 +248,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogError($"[{this.ObjectName}] base.Start 异常: {e}");
+            CustomBuildingsPlugin.LogError(8, $"[{this.ObjectName}] base.Start 异常: {e}");
         }
         this.ApplyAppearanceAndColliders("Start");
         this.EnsureLightSource();
@@ -391,12 +391,12 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
                 }
                 else
                 {
-                    CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 黑客入侵进度条完成但被门禁拦截（未启用 CanBeHacked/OnHackingComplete），无任何效果");
+                    CustomBuildingsPlugin.LogWarning(22, $"[{this.ObjectName}] 黑客入侵进度条完成但被门禁拦截（未启用 CanBeHacked/OnHackingComplete），无任何效果");
                 }
             }
             catch (Exception e)
             {
-                CustomBuildingsPlugin.LogError($"[{this.ObjectName}] OnHackingComplete 回调异常: {e}");
+                CustomBuildingsPlugin.LogError(9, $"[{this.ObjectName}] OnHackingComplete 回调异常: {e}");
             }
             return;
         }
@@ -413,7 +413,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             }
             catch (Exception e)
             {
-                CustomBuildingsPlugin.LogError($"[{this.ObjectName}] 延迟操作回调异常: {e}");
+                CustomBuildingsPlugin.LogError(10, $"[{this.ObjectName}] 延迟操作回调异常: {e}");
             }
         }
     }
@@ -532,7 +532,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             }
             catch (Exception eL)
             {
-                CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 读取关卡号失败: {eL.Message}");
+                CustomBuildingsPlugin.LogWarning(23, $"[{this.ObjectName}] 读取关卡号失败: {eL.Message}");
             }
             if (this._containerFilled && this._containerFilledLevel == curLevel)
             {
@@ -596,7 +596,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 填充容器异常: {e}");
+            CustomBuildingsPlugin.LogWarning(24, $"[{this.ObjectName}] 填充容器异常: {e}");
         }
     }
 
@@ -616,7 +616,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] ResetAndRefillContainer 异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning(25, $"[{this.ObjectName}] ResetAndRefillContainer 异常: {e.Message}");
         }
     }
 
@@ -714,7 +714,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 启动小地图标记协程异常: {e}");
+            CustomBuildingsPlugin.LogWarning(26, $"[{this.ObjectName}] 启动小地图标记协程异常: {e}");
         }
     }
 
@@ -755,7 +755,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
                         }
                         catch (Exception e)
                         {
-                            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 手动初始化小地图标记异常: {e.Message}");
+                            CustomBuildingsPlugin.LogWarning(27, $"[{this.ObjectName}] 手动初始化小地图标记异常: {e.Message}");
                         }
                     }
 
@@ -793,7 +793,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
                     // 标记存在但长时间未就绪/图片丢失：视为跨场景损坏的旧标记，销毁后重建
                     if (elapsed >= 2f)
                     {
-                        CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 小地图标记异常（reallyStarted={marker.reallyStarted}, smallImage={marker.smallImage != null}, smallImage2={marker.smallImage2 != null}），销毁重建");
+                        CustomBuildingsPlugin.LogWarning(28, $"[{this.ObjectName}] 小地图标记异常（reallyStarted={marker.reallyStarted}, smallImage={marker.smallImage != null}, smallImage2={marker.smallImage2 != null}），销毁重建");
                         UnityEngine.Object.Destroy(marker.gameObject);
                         this.nonQuestObjectMarker = null;
                         this._minimapMarkerSpawned = false;
@@ -802,7 +802,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             }
             catch (Exception e)
             {
-                CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 创建/刷新小地图传送标记异常: {e.Message}");
+                CustomBuildingsPlugin.LogWarning(29, $"[{this.ObjectName}] 创建/刷新小地图传送标记异常: {e.Message}");
             }
 
             yield return new WaitForSeconds(0.1f);
@@ -810,7 +810,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
 
         this._minimapMarkerSpawning = false;
-        CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 小地图传送标记创建超时（10秒），稍后由 SetupMore4 重试");
+        CustomBuildingsPlugin.LogWarning(30, $"[{this.ObjectName}] 小地图传送标记创建超时（10秒），稍后由 SetupMore4 重试");
     }
 
     /// <summary>
@@ -840,7 +840,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         catch (Exception e)
         {
             ok = false;
-            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 强制设置标记图标异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning(31, $"[{this.ObjectName}] 强制设置标记图标异常: {e.Message}");
         }
         // 再等一帧（CheckIfSeen2 协程可能在 reallyStarted 后立即设置 sprite），然后再次覆盖
         yield return null;
@@ -859,7 +859,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 再次设置标记图标异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning(32, $"[{this.ObjectName}] 再次设置标记图标异常: {e.Message}");
         }
     }
 
@@ -885,7 +885,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogError($"[CustomBuildings] 注册交互提供者失败: {e}");
+            CustomBuildingsPlugin.LogError(11, $"[CustomBuildings] 注册交互提供者失败: {e}");
         }
     }
 
@@ -910,7 +910,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] Force 应用外观失败: {e}");
+            CustomBuildingsPlugin.LogWarning(33, $"[{this.ObjectName}] Force 应用外观失败: {e}");
         }
     }
 
@@ -934,7 +934,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             }
             catch (Exception eR)
             {
-                CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] {caller} 启用渲染器失败: {eR.Message}");
+                CustomBuildingsPlugin.LogWarning(34, $"[{this.ObjectName}] {caller} 启用渲染器失败: {eR.Message}");
             }
 
             if (this.spr != null && !this.destroyed && !this.destroying)
@@ -943,7 +943,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
                 if (coll == null)
                 {
                     // 诊断（always-on）：图集未就绪 → 本次无法设置贴图（建筑空白）
-                    CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] {caller}: RogueFramework.ObjectSprites 为 null（图集未就绪）——本次未设置贴图");
+                    CustomBuildingsPlugin.LogWarning(35, $"[{this.ObjectName}] {caller}: RogueFramework.ObjectSprites 为 null（图集未就绪）——本次未设置贴图");
                 }
                 else
                 {
@@ -956,12 +956,12 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
                         int dirId = coll.GetSpriteIdByName(targetName, -1);
                         CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] {caller}: 四方向 direction='{this.direction}' 目标精灵='{targetName}' dirId={dirId} baseId={spriteId}");
                         if (dirId > 0) spriteId = dirId;
-                        else CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] {caller}: 方向精灵 '{targetName}' 未找到(dirId={dirId})，回退基础精灵");
+                        else CustomBuildingsPlugin.LogWarning(36, $"[{this.ObjectName}] {caller}: 方向精灵 '{targetName}' 未找到(dirId={dirId})，回退基础精灵");
                     }
                     if (spriteId <= 0)
                     {
                         // 诊断（always-on）：基础精灵都没找到 → 该建筑将无贴图（空白）
-                        CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] {caller}: 基础精灵 '{this.ObjectName}' 未找到(spriteId={spriteId})，图集='{coll.name}'——建筑将无贴图");
+                        CustomBuildingsPlugin.LogWarning(37, $"[{this.ObjectName}] {caller}: 基础精灵 '{this.ObjectName}' 未找到(spriteId={spriteId})，图集='{coll.name}'——建筑将无贴图");
                     }
                     if (spriteId > 0)
                     {
@@ -975,7 +975,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
                         }
                         catch (Exception eBuild)
                         {
-                            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] {caller} ForceBuild 失败: {eBuild.Message}");
+                            CustomBuildingsPlugin.LogWarning(38, $"[{this.ObjectName}] {caller} ForceBuild 失败: {eBuild.Message}");
                         }
 
                         // 用 SpriteScale 放大到合适尺寸
@@ -1024,7 +1024,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             }
             catch (Exception e3)
             {
-                CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] {caller} 启用碰撞失败: {e3.Message}");
+                CustomBuildingsPlugin.LogWarning(39, $"[{this.ObjectName}] {caller} 启用碰撞失败: {e3.Message}");
             }
 
             // 碰撞器随精灵放大（spr.localScale 只放大渲染 mesh；根 BoxCollider2D 不跟随）
@@ -1032,7 +1032,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] {caller} 应用外观失败: {e}");
+            CustomBuildingsPlugin.LogWarning(40, $"[{this.ObjectName}] {caller} 应用外观失败: {e}");
         }
     }
 
@@ -1078,7 +1078,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 缩放碰撞器失败: {e.Message}");
+            CustomBuildingsPlugin.LogWarning(41, $"[{this.ObjectName}] 缩放碰撞器失败: {e.Message}");
         }
     }
 
@@ -1135,7 +1135,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[CustomBuildings] FixMaterialInsts 异常: {e}");
+            CustomBuildingsPlugin.LogWarning(42, $"[CustomBuildings] FixMaterialInsts 异常: {e}");
         }
     }
 
@@ -1250,7 +1250,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] 洒落容器物品异常: {e}");
+            CustomBuildingsPlugin.LogWarning(43, $"[{this.ObjectName}] 洒落容器物品异常: {e}");
         }
     }
 
@@ -1271,7 +1271,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogError($"[{this.ObjectName}] OnBreakOpen 回调异常: {e}");
+            CustomBuildingsPlugin.LogError(12, $"[{this.ObjectName}] OnBreakOpen 回调异常: {e}");
         }
 
         // 洒落容器物品：建筑打碎时，内部没捡的物品全部爆出来（像垃圾桶）
@@ -1316,7 +1316,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogError($"[{this.ObjectName}] 爆炸处理异常: {e}");
+            CustomBuildingsPlugin.LogError(13, $"[{this.ObjectName}] 爆炸处理异常: {e}");
         }
 
         // 注意：不能在此设 this.destroying = true！
@@ -1342,7 +1342,7 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             }
             catch (Exception e)
             {
-                CustomBuildingsPlugin.LogWarning($"[{this.ObjectName}] DestroyWallTileAtPosition: {e.Message}");
+                CustomBuildingsPlugin.LogWarning(44, $"[{this.ObjectName}] DestroyWallTileAtPosition: {e.Message}");
             }
         }
 

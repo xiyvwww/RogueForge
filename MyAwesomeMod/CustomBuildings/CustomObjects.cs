@@ -88,14 +88,14 @@ public static class CustomObjects
             {
                 if (method.GetParameters().Length != 0)
                 {
-                    CustomBuildingsPlugin.LogError($"{type.FullName}: Methods marked with [RLSetup] cannot have any parameters!");
+                    CustomBuildingsPlugin.LogError(14, $"{type.FullName}: Methods marked with [RLSetup] cannot have any parameters!");
                     continue;
                 }
                 try
                 {
                     if (!method.IsStatic)
                     {
-                        CustomBuildingsPlugin.LogError($"{type.FullName}: Methods marked with [RLSetup] must be static!");
+                        CustomBuildingsPlugin.LogError(15, $"{type.FullName}: Methods marked with [RLSetup] must be static!");
                         continue;
                     }
                     method.Invoke(null, null);
@@ -104,7 +104,7 @@ public static class CustomObjects
                 catch (Exception ex)
                 {
                     // Logger 可能尚未初始化（Initialize 未调用时），判空避免掩盖真实异常
-                    CustomBuildingsPlugin.LogError(ex.ToString());
+                    CustomBuildingsPlugin.LogError(16, ex.ToString());
                 }
             }
         }
@@ -153,6 +153,25 @@ public static class CustomObjects
             string[] dllFiles = Directory.GetFiles(pluginDir, "*.dll", SearchOption.AllDirectories);
             string selfName = typeof(CustomObjects).Assembly.GetName().Name ?? "RogueForge";
             int loaded = 0, skipped = 0, failed = 0;
+
+            // 性能优化：预计算活跃插件 Location 集合（避免每个 dll 都遍历 Chainloader.PluginInfos）
+            var activeLocations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                foreach (KeyValuePair<string, PluginInfo> kv in Chainloader.PluginInfos)
+                    if (kv.Value != null && !string.IsNullOrEmpty(kv.Value.Location))
+                        activeLocations.Add(kv.Value.Location);
+            }
+            catch { }
+
+            // 性能优化：预计算当前已加载的程序集简单名集合
+            var loadedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (Assembly a in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try { string? n = a.GetName().Name; if (!string.IsNullOrEmpty(n)) loadedNames.Add(n); }
+                catch { }
+            }
+
             foreach (string dll in dllFiles)
             {
                 string simpleName = Path.GetFileNameWithoutExtension(dll);
@@ -160,18 +179,22 @@ public static class CustomObjects
 
                 if (!scannedPluginAssemblies.Add(simpleName)) { skipped++; continue; }   // 本会话已处理过
                 if (string.Equals(simpleName, selfName, StringComparison.OrdinalIgnoreCase)) { skipped++; continue; }   // 本库自身（无 [RLSetup]）
+                if (activeLocations.Contains(dll)) { skipped++; continue; }   // 活跃插件：由 BepInEx 调 Awake 自行注册
+
+                // 性能优化：程序集已加载 → 直接跳过，不再做全类型反射扫描。
+                // 已加载说明它是其他插件或其依赖库（UniTask / System.* / 0Harmony 等都没有 [RLSetup]），
+                // 反射扫描它们毫无收益却显著拖慢启动——mod 越多 plugins 目录越大越明显。
+                if (loadedNames.Contains(simpleName)) { skipped++; continue; }
 
                 try
                 {
-                    // 已被 BepInEx 激活的插件（Location 匹配该 dll 路径）→ 由它自己的 Awake 注册，跳过
-                    if (IsActiveBepInExPlugin(dll)) { skipped++; continue; }
-
-                    // 解析程序集：已加载则复用（避免重复实例导致类型不一致），否则 LoadFrom 加载
-                    Assembly asm = FindLoadedAssembly(simpleName) ?? Assembly.LoadFrom(dll);
-                    PatchResourceManager(asm);   // 与 RogueLibs 一致：给 Resources 类换缓存版资源管理器
+                    // 纯类库 dll（未被 BepInEx 加载）→ 加载并扫描注册
+                    Assembly asm = Assembly.LoadFrom(dll);
+                    Type[] types = GetLoadableTypes(asm).ToArray();   // 类型只枚举一次（扫描 + PatchResourceManager 共用）
+                    PatchResourceManager(asm, types);   // 与 RogueLibs 一致：给 Resources 类换缓存版资源管理器
 
                     int setups = 0;
-                    foreach (Type type in GetLoadableTypes(asm))
+                    foreach (Type type in types)
                     {
                         // 幂等：该类型对应的建筑名已在 Registry（已被本 dll 或其他路径注册过）→ 跳过
                         string buildingName = type.GetCustomAttribute<ObjectNameAttribute>()?.Name ?? type.Name;
@@ -184,45 +207,15 @@ public static class CustomObjects
                 catch (Exception ex)
                 {
                     failed++;
-                    CustomBuildingsPlugin.LogWarning($"[CustomBuildings] 加载插件库失败: {dll} - {ex.Message}");
+                    CustomBuildingsPlugin.LogWarning(45, $"[CustomBuildings] 加载插件库失败: {dll} - {ex.Message}");
                 }
             }
             CustomBuildingsPlugin.LogInfo($"[CustomBuildings] 插件库扫描完成: 新加载 {loaded} 个, 跳过 {skipped} 个, 失败 {failed} 个");
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogError($"[CustomBuildings] 扫描插件库异常: {e}");
+            CustomBuildingsPlugin.LogError(17, $"[CustomBuildings] 扫描插件库异常: {e}");
         }
-    }
-
-    /// <summary>该 dll 是否已被 BepInEx 作为插件激活（Chainloader.PluginInfos 中存在 Location 指向该文件的条目）。
-    /// 被激活的插件由 BepInEx 调用其 Awake 自行注册，这里不应重复执行 [RLSetup]。</summary>
-    private static bool IsActiveBepInExPlugin(string dllPath)
-    {
-        try
-        {
-            foreach (KeyValuePair<string, PluginInfo> kv in Chainloader.PluginInfos)
-            {
-                if (kv.Value != null && string.Equals(kv.Value.Location, dllPath, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-        }
-        catch { }
-        return false;
-    }
-
-    /// <summary>按简单名查找已加载的程序集（找不到返回 null）。</summary>
-    private static Assembly? FindLoadedAssembly(string simpleName)
-    {
-        foreach (Assembly a in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            try
-            {
-                if (string.Equals(a.GetName().Name, simpleName, StringComparison.OrdinalIgnoreCase)) return a;
-            }
-            catch { }
-        }
-        return null;
     }
 
     /// <summary>获取程序集可加载的类型（个别类型因依赖缺失无法加载时返回能加载的部分，不让整个 dll 注册失败）。</summary>
@@ -246,13 +239,15 @@ public static class CustomObjects
     /// 替换指定程序集中生成的 Resources 类的 ResourceManager 为缓存版（与 RogueLibs.LoadFromAssembly 的
     /// PatchResourceManager 一致），保证 [RLSetup] 里读取内嵌精灵资源（如 Mod.Properties.Resources.XXX）正常。
     /// </summary>
-    private static void PatchResourceManager(Assembly asm)
+    /// <param name="asm">目标程序集。</param>
+    /// <param name="types">可复用的类型列表（LoadAllPluginLibraries 已枚举，避免二次 GetTypes）；传 null 时自行枚举。</param>
+    private static void PatchResourceManager(Assembly asm, Type[]? types = null)
     {
         try
         {
-            foreach (Type type in GetLoadableTypes(asm))
+            foreach (Type type in types ?? GetLoadableTypes(asm))
             {
-                if (!type.IsNotPublic || type.Name != "Resources") continue;
+                if (type == null || !type.IsNotPublic || type.Name != "Resources") continue;
                 FieldInfo? field = type.GetField("resourceMan", BindingFlags.Static | BindingFlags.NonPublic);
                 PropertyInfo? property = type.GetProperty("ResourceManager", BindingFlags.Static | BindingFlags.Public);
                 if (field == null || property == null || !property.CanRead) continue;
@@ -263,7 +258,7 @@ public static class CustomObjects
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[CustomBuildings] 替换资源管理器失败: {e.Message}");
+            CustomBuildingsPlugin.LogWarning(46, $"[CustomBuildings] 替换资源管理器失败: {e.Message}");
         }
     }
 }

@@ -24,38 +24,46 @@ public static class CustomBuildingsPlugin
     public static ManualLogSource Logger = null!;
 
     /// <summary>
-    /// 输出调试级别日志信息（仅在 DEBUG 编译模式下生效），统一以 [RogueForge] 开头。
-    /// 消息内容可自带模块前缀（如 "[KMap] ..."），输出形如 "[RogueForge] [KMap] ..."。
+    /// 成功类日志（按需求已移除）：不再输出任何内容。
+    /// 保留方法签名以兼容全部调用点（调用无副作用）；日志只保留警告与报错（见 LogWarning / LogError）。
     /// </summary>
-    /// <param name="message">要记录的日志消息。</param>
+    /// <param name="message">要记录的日志消息（忽略）。</param>
     [Conditional("DEBUG")]
     internal static void LogInfo(string message)
     {
-        if (string.IsNullOrWhiteSpace(message)) return;
-        if (Logger == null) return;
-        Logger.LogInfo("[RogueForge] " + message);
+        // 成功类日志已移除。
     }
 
     /// <summary>
-    /// 输出警告级别日志信息（所有编译模式均生效），统一以 [RogueForge] 开头。
+    /// 输出警告级别日志信息（所有编译模式均生效），统一格式：
+    /// <c>[RogueForge] Warning: 000;Details: 未知警告。</c>
+    /// code 为可选警告编号（默认 0，显示为 000）。
     /// </summary>
     /// <param name="message">要记录的日志消息。</param>
-    internal static void LogWarning(string message)
+    internal static void LogWarning(string message) => LogWarning(0, message);
+
+    /// <summary>带编号的警告日志重载（编号显示为三位数，如 000/001/002…）。</summary>
+    internal static void LogWarning(int code, string message)
     {
         if (string.IsNullOrWhiteSpace(message)) return;
         if (Logger == null) return;
-        Logger.LogWarning("[RogueForge] " + message);
+        Logger.LogWarning($"[RogueForge] Warning: {code:D3};Details: {message}");
     }
 
     /// <summary>
-    /// 输出错误级别日志信息（所有编译模式均生效），统一以 [RogueForge] 开头。
+    /// 输出错误级别日志信息（所有编译模式均生效），统一格式：
+    /// <c>[RogueForge] error: 000;Details: 未知错误。</c>
+    /// code 为可选错误编号（默认 0，显示为 000）。
     /// </summary>
     /// <param name="message">要记录的日志消息。</param>
-    internal static void LogError(string message)
+    internal static void LogError(string message) => LogError(0, message);
+
+    /// <summary>带编号的错误日志重载（编号显示为三位数，如 000/001/002…）。</summary>
+    internal static void LogError(int code, string message)
     {
         if (string.IsNullOrWhiteSpace(message)) return;
         if (Logger == null) return;
-        Logger.LogError("[RogueForge] " + message);
+        Logger.LogError($"[RogueForge] error: {code:D3};Details: {message}");
     }
 
     /// <summary>是否已初始化（防止重复注册 patch）。</summary>
@@ -299,7 +307,7 @@ public static class CustomBuildingsPlugin
             bool enabled = custom.CanBeHacked || custom.IsHackingEnabledByOverride();
             if (!enabled)
             {
-                LogWarning($"[CustomBuildings] 入侵门禁拦截：{custom.ObjectName}（未启用 CanBeHacked/OnHackingComplete）");
+                LogWarning(0, $"[CustomBuildings] 入侵门禁拦截：{custom.ObjectName}（未启用 CanBeHacked/OnHackingComplete）");
                 return false;
             }
         }
@@ -323,7 +331,7 @@ public static class CustomBuildingsPlugin
         }
         catch (Exception e)
         {
-            LogWarning($"[CustomBuildings] GameController.SetVersionText 钩子异常: {e.Message}");
+            LogWarning(1, $"[CustomBuildings] GameController.SetVersionText 钩子异常: {e.Message}");
         }
     }
 
@@ -369,7 +377,7 @@ public static class CustomBuildingsPlugin
         }
         catch (Exception e)
         {
-            LogWarning($"[CustomBuildings] CopyToCorrupted 保护异常: {e.Message}");
+            LogWarning(2, $"[CustomBuildings] CopyToCorrupted 保护异常: {e.Message}");
             return true;    // 异常时放行原版，避免影响游戏
         }
     }
@@ -402,14 +410,14 @@ public static class CustomBuildingsPlugin
             }
             catch (Exception eCb)
             {
-                CustomBuildingsPlugin.LogWarning($"[{objReal.objectName}] OnItemBought 回调异常: {eCb.Message}");
+                CustomBuildingsPlugin.LogWarning(3, $"[{objReal.objectName}] OnItemBought 回调异常: {eCb.Message}");
             }
 
             return false; // 拦截原版自动购买（购买已由用户回调决定）
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[CustomBuildings] InvSlot.BuyItem 钩子异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning(4, $"[CustomBuildings] InvSlot.BuyItem 钩子异常: {e.Message}");
             return true; // 异常时放行原版，避免卡死
         }
     }
@@ -492,7 +500,7 @@ public static class CustomBuildingsPlugin
                 catch (Exception eC)
                 {
                     pendingPriceVerify.Remove(__instance);
-                    LogWarning($"[CustomBuildings] 启动第二层价格校验协程失败: {eC.Message}");
+                    LogWarning(5, $"[CustomBuildings] 启动第二层价格校验协程失败: {eC.Message}");
                 }
             }
 
@@ -510,7 +518,7 @@ public static class CustomBuildingsPlugin
         }
         catch (Exception e)
         {
-            LogWarning($"[CustomBuildings] InvSlot.UpdateInvSlot 钩子异常: {e.Message}");
+            LogWarning(6, $"[CustomBuildings] InvSlot.UpdateInvSlot 钩子异常: {e.Message}");
         }
     }
 
@@ -575,7 +583,7 @@ public static class CustomBuildingsPlugin
         }
         catch (Exception e)
         {
-            LogWarning($"[CustomBuildings] 第二层价格校验协程异常: {e.Message}");
+            LogWarning(7, $"[CustomBuildings] 第二层价格校验协程异常: {e.Message}");
         }
         finally
         {
@@ -613,7 +621,7 @@ public static class CustomBuildingsPlugin
                 CustomObjectReal? template = EnsurePrefabValid(meta);
                 if (template == null)
                 {
-                    LogWarning($"[{meta.Name}] LoadLevel.SetupMore4: 无法获取 prefab 模板实例，跳过刷新");
+                    LogWarning(8, $"[{meta.Name}] LoadLevel.SetupMore4: 无法获取 prefab 模板实例，跳过刷新");
                     continue;
                 }
                 if (template is IBuildingSpawner spawner)
@@ -625,14 +633,14 @@ public static class CustomBuildingsPlugin
                     }
                     catch (Exception e)
                     {
-                        LogError($"[{meta.Name}] OnLevelSpawn 回调异常: {e}");
+                        LogError(0, $"[{meta.Name}] OnLevelSpawn 回调异常: {e}");
                     }
                 }
             }
         }
         catch (Exception e)
         {
-            LogWarning($"[CustomBuildings] LoadLevel.SetupMore4 建筑刷新钩子异常: {e.Message}");
+            LogWarning(9, $"[CustomBuildings] LoadLevel.SetupMore4 建筑刷新钩子异常: {e.Message}");
         }
     }
 
@@ -679,7 +687,7 @@ public static class CustomBuildingsPlugin
         }
         catch (Exception e)
         {
-            LogWarning($"[CustomBuildings] LoadLevel.SetupMore4 销毁旧建筑异常: {e.Message}");
+            LogWarning(10, $"[CustomBuildings] LoadLevel.SetupMore4 销毁旧建筑异常: {e.Message}");
         }
     }
 
@@ -706,7 +714,7 @@ public static class CustomBuildingsPlugin
         }
         catch (Exception e)
         {
-            LogWarning($"[CustomBuildings] LoadLevel.SetupMore4 钩子异常: {e.Message}");
+            LogWarning(11, $"[CustomBuildings] LoadLevel.SetupMore4 钩子异常: {e.Message}");
         }
     }
 
@@ -729,7 +737,7 @@ public static class CustomBuildingsPlugin
         }
         catch (Exception e)
         {
-            LogWarning($"[CustomBuildings] NameDB.GetName 钩子异常: {e.Message}");
+            LogWarning(12, $"[CustomBuildings] NameDB.GetName 钩子异常: {e.Message}");
         }
     }
 
@@ -755,7 +763,7 @@ public static class CustomBuildingsPlugin
         }
         catch (Exception e)
         {
-            LogWarning($"[CustomBuildings] Bed.Interact 钩子异常: {e.Message}");
+            LogWarning(13, $"[CustomBuildings] Bed.Interact 钩子异常: {e.Message}");
         }
     }
 
@@ -780,7 +788,7 @@ public static class CustomBuildingsPlugin
 
                 if (!__instance.objectPrefabDic.ContainsKey(meta.CloneSource))
                 {
-                    LogError($"[CustomBuildings] 克隆源 {meta.CloneSource} 不存在（建筑 {objectName}），跳过注册");
+                    LogError(1, $"[CustomBuildings] 克隆源 {meta.CloneSource} 不存在（建筑 {objectName}），跳过注册");
                     continue;
                 }
 
@@ -855,7 +863,7 @@ public static class CustomBuildingsPlugin
             }
             catch (Exception e)
             {
-                LogError($"[CustomBuildings] prefab 注册失败：{objectName} - {e}");
+                LogError(2, $"[CustomBuildings] prefab 注册失败：{objectName} - {e}");
             }
         }
     }
@@ -949,7 +957,7 @@ public static class CustomBuildingsPlugin
         // 诊断（always-on）：物件面板里一个自定义建筑按钮都没有 → 说明注入失败（注册表/面板判定问题），
         // 与"按钮在但画不出来"（SetTileImage 的 id<=0）是两个不同的故障层
         if (customButtons.Count == 0)
-            LogWarning($"[CustomBuildings] OpenObjectLoad: 物件面板未找到自定义建筑按钮（Registry={CustomObjects.Names.Count}个，按钮总数={list.Count}）");
+            LogWarning(14, $"[CustomBuildings] OpenObjectLoad: 物件面板未找到自定义建筑按钮（Registry={CustomObjects.Names.Count}个，按钮总数={list.Count}）");
 
         // 让滚动列表按新顺序重建，并回到顶部，保证一打开就能看到
         __instance.scrollerControllerLoad.RefreshMenuData(true);
@@ -985,7 +993,7 @@ public static class CustomBuildingsPlugin
         if (id <= 0 || inst == null)
         {
             // 诊断（always-on）：找不到自定义精灵 → 记录图集信息，定位"编辑器画自定义建筑不显示"
-            LogWarning($"[CustomBuildings] SetTileImage: 找不到自定义建筑精灵 {objectName} (id={id})。" +
+            LogWarning(15, $"[CustomBuildings] SetTileImage: 找不到自定义建筑精灵 {objectName} (id={id})。" +
                 $"编辑器图集='{(source != null ? source.name : "null")}'，RogueFramework图集='{(RogueFramework.ObjectSprites != null ? RogueFramework.ObjectSprites.name : "null")}'，" +
                 $"是否同实例={source == RogueFramework.ObjectSprites}，Registry={CustomObjects.Names.Count}个");
             return;
@@ -1018,7 +1026,7 @@ public static class CustomBuildingsPlugin
             }
             catch (Exception e)
             {
-                LogError($"[CustomBuildings] materialInsts 修复失败：{objectName} - {e}");
+                LogError(3, $"[CustomBuildings] materialInsts 修复失败：{objectName} - {e}");
             }
         }
 
@@ -1093,10 +1101,10 @@ public static class CustomBuildingsPlugin
         // prefab 已失效（场景切换被销毁）或组件丢失 → 从克隆源重建
         if (!gr.objectPrefabDic.ContainsKey(meta.CloneSource))
         {
-            LogError($"[CustomBuildings] 克隆源 {meta.CloneSource} 不存在（建筑 {objectRealName}），无法重建 prefab");
+            LogError(4, $"[CustomBuildings] 克隆源 {meta.CloneSource} 不存在（建筑 {objectRealName}），无法重建 prefab");
             return null;
         }
-        LogWarning($"[CustomBuildings] prefab 已失效（场景切换被销毁），从 {meta.CloneSource} 重建：{objectRealName}");
+        LogWarning(16, $"[CustomBuildings] prefab 已失效（场景切换被销毁），从 {meta.CloneSource} 重建：{objectRealName}");
         try
         {
             GameObject basePrefab = gr.objectPrefabDic[meta.CloneSource];
@@ -1147,7 +1155,7 @@ public static class CustomBuildingsPlugin
         }
         catch (Exception e)
         {
-            LogError($"[CustomBuildings] prefab 重建失败：{objectRealName} - {e}");
+            LogError(5, $"[CustomBuildings] prefab 重建失败：{objectRealName} - {e}");
             return null;
         }
     }
@@ -1188,7 +1196,7 @@ public static class CustomBuildingsPlugin
         }
         catch (Exception e)
         {
-            LogWarning($"[CustomBuildings] RemoveNetworkIdentity 异常: {e.Message}");
+            LogWarning(17, $"[CustomBuildings] RemoveNetworkIdentity 异常: {e.Message}");
         }
     }
 }

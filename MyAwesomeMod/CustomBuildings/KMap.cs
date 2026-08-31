@@ -89,11 +89,11 @@ public static class KMap
                     }
                 }
             }
-            CustomBuildingsPlugin.LogWarning("[KMap] GetStartingChunk: 所有来源均未找到出生点区块");
+            CustomBuildingsPlugin.LogWarning(51, "[KMap] GetStartingChunk: 所有来源均未找到出生点区块");
         }
         catch (System.Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[KMap] GetStartingChunk 异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning(52, $"[KMap] GetStartingChunk 异常: {e.Message}");
         }
         return null;
     }
@@ -166,11 +166,11 @@ public static class KMap
                     }
                 }
             }
-            CustomBuildingsPlugin.LogWarning("[KMap] GetEndingChunk: 所有来源均未找到出口区块");
+            CustomBuildingsPlugin.LogWarning(53, "[KMap] GetEndingChunk: 所有来源均未找到出口区块");
         }
         catch (System.Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[KMap] GetEndingChunk 异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning(54, $"[KMap] GetEndingChunk 异常: {e.Message}");
         }
         return null;
     }
@@ -355,6 +355,42 @@ public static class KMap
         return result;
     }
 
+    // ==================== 每关空地缓存（加载性能优化） ====================
+    // 关卡加载时，水晶(150个)/垃圾桶×3/机器人×3 各自调用 GetAllEmptySpotsInChunk 做全图扫描，
+    // 每格都走 Physics2D 物理查询（IsOverlapping → OverlapPointNonAlloc）→ 每关 ~7 次全图扫描、
+    // ~7 万次物理查询，是"加载变慢"的最大来源。
+    // 改为每关只扫描一次并缓存：参数固定为 (0.64f, 排除owner, 排除prison, 近水排除, 不排除非owner)，
+    // 与水晶/垃圾桶/机器人的既有调用参数完全一致 → 缓存结果与之前各自扫描的结果相同，行为不变。
+
+    private static int _emptySpotsCacheLevel = -1;
+    private static List<Vector2>? _emptySpotsCache;
+
+    /// <summary>清除每关空地缓存（重新开局 / 关卡变化时调用）。</summary>
+    public static void ResetEmptySpotsCache()
+    {
+        _emptySpotsCache = null;
+        _emptySpotsCacheLevel = -1;
+    }
+
+    /// <summary>
+    /// 获取当前关卡所有空地（每关缓存一次，供水晶/垃圾桶/机器人复用）。
+    /// 注意：返回的是缓存实例，调用方如需排序/洗牌请先复制。
+    /// </summary>
+    public static List<Vector2> GetAllEmptySpotsLevel()
+    {
+        GameController? gc = GC;
+        if (gc == null || gc.sessionDataBig == null) return new List<Vector2>();
+        int level = gc.sessionDataBig.curLevel;
+        if (_emptySpotsCache != null && _emptySpotsCacheLevel == level) return _emptySpotsCache;
+
+        var spots = new List<Vector2>();
+        foreach (Chunk chunk in GetChunksExceptExitAndEntrance())
+            spots.AddRange(GetAllEmptySpotsInChunk(chunk, 0.64f, true, true, true));
+        _emptySpotsCache = spots;
+        _emptySpotsCacheLevel = level;
+        return spots;
+    }
+
     // ==================== 建筑生成 ====================
 
     public static ObjectReal? SpawnObject(string objectName, Vector2 position)
@@ -367,7 +403,7 @@ public static class KMap
         }
         catch (System.Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[KMap] 生成建筑 {objectName} 失败: {e.Message}");
+            CustomBuildingsPlugin.LogWarning(55, $"[KMap] 生成建筑 {objectName} 失败: {e.Message}");
             return null;
         }
     }
@@ -452,7 +488,7 @@ public static class KMap
         }
         catch (System.Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[KMap] 删除建筑 {obj.objectName} 失败: {e.Message}");
+            CustomBuildingsPlugin.LogWarning(56, $"[KMap] 删除建筑 {obj.objectName} 失败: {e.Message}");
             return null; // 删除失败，返回 null
         }
     }

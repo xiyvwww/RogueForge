@@ -144,7 +144,7 @@ public static class IStoreExtensions
             }
             if (obj.specialInvDatabase == null)
             {
-                CustomBuildingsPlugin.LogWarning($"[{obj.objectName}] OpenBuyChest: specialInvDatabase 创建失败");
+                CustomBuildingsPlugin.LogWarning(48, $"[{obj.objectName}] OpenBuyChest: specialInvDatabase 创建失败");
                 return;
             }
 
@@ -204,7 +204,7 @@ public static class IStoreExtensions
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[{obj.objectName}] OpenBuyChest 异常: {e}");
+            CustomBuildingsPlugin.LogWarning(49, $"[{obj.objectName}] OpenBuyChest 异常: {e}");
         }
     }
 
@@ -256,7 +256,7 @@ public static class IStoreExtensions
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[{obj.objectName}] PurchaseItem 异常: {e}");
+            CustomBuildingsPlugin.LogWarning(50, $"[{obj.objectName}] PurchaseItem 异常: {e}");
             return false;
         }
     }

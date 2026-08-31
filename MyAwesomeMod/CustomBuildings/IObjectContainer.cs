@@ -82,7 +82,7 @@ public static class IObjectContainerExtensions
         }
         catch (Exception e)
         {
-            CustomBuildingsPlugin.LogWarning($"[{obj.objectName}] OpenContainer 异常: {e.Message}");
+            CustomBuildingsPlugin.LogWarning(47, $"[{obj.objectName}] OpenContainer 异常: {e.Message}");
         }
     }
 }
