@@ -1,5 +1,5 @@
 ---
-classless: 2026-08-16T15:43:00
+classless: 2026-08-16 15:43:00
 ---
 ***引言：***
 1. 写到这里有点困了，不能老熬夜，知道吗？o(´^｀)o
@@ -13,4 +13,11 @@ classless: 2026-08-16T15:43:00
 public class RecycleBin : CustomObjectReal, IMinimapTeleportable
 {
 }
+```
+
+- 使用此方法设置建筑物突变大小，不是必须实现，默认为1f。
+
+示：
+```
+public float GetMinimapIconScale() => 1f;
 ```
