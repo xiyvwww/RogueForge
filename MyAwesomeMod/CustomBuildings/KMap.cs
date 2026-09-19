@@ -339,9 +339,9 @@ public static class KMap
                     continue;
                 }
 
-                if ((bool)tileInfo.IsOverlapping(pos, "ObjectRealSprite", 0.64f))
-                    continue;
-
+                // 性能优化：扫描阶段不做 Physics2D 物理查询（IsOverlapping）——每格一次物理查询
+                // 会让全图扫描产生上万次物理检测（加载卡顿主因）。瓦片级校验（墙/洞/水/固体物）已足够，
+                // 物理重叠由调用方对最终选中的少量点位用 <see cref="IsSpotFree"/> 复核。
                 result.Add(pos);
             }
         }
@@ -389,6 +389,20 @@ public static class KMap
         _emptySpotsCache = spots;
         _emptySpotsCacheLevel = level;
         return spots;
+    }
+
+    /// <summary>
+    /// 物理复核：该点是否与已有物体（ObjectRealSprite）重叠。
+    /// 扫描阶段不做物理查询（见 <see cref="GetAllEmptySpotsInChunk"/>），生成前对最终选中的点位调用本方法。
+    /// 注意：关卡加载早期部分碰撞体可能未激活（物理查询查不到），瓦片级校验（墙/洞/固体物）才是主防线。
+    /// </summary>
+    public static bool IsSpotFree(Vector2 pos)
+    {
+        try
+        {
+            return GC?.tileInfo?.IsOverlapping(pos, "ObjectRealSprite", 0.64f) == null;
+        }
+        catch { return true; }
     }
 
     // ==================== 建筑生成 ====================

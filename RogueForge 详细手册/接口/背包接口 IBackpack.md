@@ -1,5 +1,5 @@
 ---
-classless: 08-17T18:40:00
+classless: 2026-08-26T15:06:00
 ---
 # 实现
 - UseItemOnObject()函数本身是ObjectReal类里的方法，RogueForge加了一些辅助代码，让它可直接使用。

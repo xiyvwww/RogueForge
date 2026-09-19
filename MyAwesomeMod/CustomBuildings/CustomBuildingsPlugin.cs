@@ -220,16 +220,30 @@ public static class CustomBuildingsPlugin
         {
             GameController gc = GameController.gameController;
             if (gc == null) return;
-            if (gc.minimap != null) MovePlayerMarkerToTop(gc.minimap.transform);
-            if (gc.minimapBig != null) MovePlayerMarkerToTop(gc.minimapBig.transform);
+            if (gc.minimap != null) MovePlayerMarkerToTop(gc.minimap.transform, ref cachedPlayerMarkerMinimap);
+            if (gc.minimapBig != null) MovePlayerMarkerToTop(gc.minimapBig.transform, ref cachedPlayerMarkerMinimapBig);
         }
         catch { }
     }
 
-    private static void MovePlayerMarkerToTop(Transform minimapRoot)
+    // 玩家标记 Transform 缓存：150+ 个标记完成时都会调 EnsurePlayerMarkerOnTop，
+    // 每关第一次 Find 后缓存复用（PlayerMarker 是常驻 UI 子物体，跨关不重建）。
+    private static Transform? cachedPlayerMarkerMinimap;
+    private static Transform? cachedPlayerMarkerMinimapBig;
+
+    private static void MovePlayerMarkerToTop(Transform minimapRoot, ref Transform? cached)
     {
-        Transform pm = minimapRoot.Find("PlayerMarker");
-        if (pm != null && pm.GetSiblingIndex() != minimapRoot.childCount - 1)
+        Transform? pm = cached;
+        // 缓存失效条件：为空、被销毁（Unity 假空）、或已脱离该 minimap 层级
+        if (pm == null || pm.gameObject == null || pm.parent != minimapRoot)
+            pm = minimapRoot.Find("PlayerMarker");
+        if (pm == null)
+        {
+            cached = null;
+            return;
+        }
+        cached = pm;
+        if (pm.GetSiblingIndex() != minimapRoot.childCount - 1)
             pm.SetAsLastSibling();
     }
 
@@ -803,6 +817,10 @@ public static class CustomBuildingsPlugin
                 // 挂载建筑组件（用元数据里的类型）
                 CustomObjectReal nm = (CustomObjectReal)newPrefab.AddComponent(meta.Type);
                 nm.PrefabObject = newPrefab;
+                // 关键：prefab 模板标记"必须销毁"为 false 语义反向——设 true 让换层清理的
+                // LevelTransition FindObjectsOfType<ObjectReal> 扫荡跳过它（否则每关被销毁→每关重建
+                // 9 次 Instantiate，且重建路径有泄漏风险）。实例的 Awake 会重置回 false。
+                nm.mustDestroyNotRecycle = true;
 
                 // 容器支持：prefab 加 InvDatabase 组件（打开容器界面/打碎掉落物品都需要它）。
                 // 只有 override 了 FillContainer 的子类才实际填充物品。
@@ -1104,6 +1122,34 @@ public static class CustomBuildingsPlugin
             LogError(4, $"[CustomBuildings] 克隆源 {meta.CloneSource} 不存在（建筑 {objectRealName}），无法重建 prefab");
             return null;
         }
+
+        // 防泄漏：重建前清理旧 prefab 残留——
+        // ① 字典条目还在但组件丢失（GameObject 存活）：直接销毁；
+        // ② 字典条目已丢但旧 prefab 因 DontDestroyOnLoad 仍存活（如 SetupDics 重跑/字典被清）：
+        //    从 LiveInstances 找 PrefabObject==自身 的模板销毁。
+        // 否则每次场景切换重建都会在 (9999,9999) 累积一个带碰撞体的孤儿 prefab，
+        // 物理/路径计算逐关变慢——"玩几层后变慢"的主要泄漏点。
+        try
+        {
+            if (existing != null && existing.gameObject != null)
+            {
+                UnityEngine.Object.DestroyImmediate(existing);
+            }
+            else
+            {
+                List<CustomObjectReal> live = new List<CustomObjectReal>(CustomObjectReal.LiveInstances);
+                foreach (CustomObjectReal c in live)
+                {
+                    if (c == null || c.gameObject == null || c.PrefabObject == null) continue;
+                    if (c.PrefabObject != c.gameObject) continue;   // 只处理 prefab 模板自身（实例的 PrefabObject 指向模板）
+                    if (c.ObjectName != objectRealName) continue;
+                    UnityEngine.Object.DestroyImmediate(c.gameObject);
+                    break;
+                }
+            }
+        }
+        catch { }
+
         LogWarning(16, $"[CustomBuildings] prefab 已失效（场景切换被销毁），从 {meta.CloneSource} 重建：{objectRealName}");
         try
         {
@@ -1117,6 +1163,8 @@ public static class CustomBuildingsPlugin
 
             CustomObjectReal nm = (CustomObjectReal)newPrefab.AddComponent(meta.Type);
             nm.PrefabObject = newPrefab;
+            // 与 SetupDics 注册一致：prefab 模板设 mustDestroyNotRecycle=true，换层扫荡不销毁它
+            nm.mustDestroyNotRecycle = true;
 
             // 容器支持：重建的 prefab 也要加 InvDatabase（与 SetupDics 注册一致）
             if (newPrefab.GetComponent<InvDatabase>() == null)

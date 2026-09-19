@@ -229,6 +229,10 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             {
                 this.dontRecycleOrDestroy = true;
                 this.dirtyObject = false;
+                // 关键：prefab 模板设了 mustDestroyNotRecycle=true（换层清理的 FindObjectsOfType<ObjectReal>
+                // 扫荡会跳过它，避免每关重建），该字段是可序列化公共字段会被克隆继承——
+                // 实例必须重置为 false，否则换层时不会被原版扫荡销毁 → 跨关累积。
+                this.mustDestroyNotRecycle = false;
             }
         }
     }
@@ -513,6 +517,13 @@ public abstract class CustomObjectReal : ObjectReal, IObjectInteraction
             if (GameController.gameController == null)
             {
                 CustomBuildingsPlugin.LogInfo($"[{this.ObjectName}] TryFillContainer: gc 未就绪，跳过");
+                return;
+            }
+            // 性能优化：非容器建筑（未实现 IObjectContainer，如 150 个水晶、垃圾桶 IBackpack、商店 IStore）
+            // 不需要 InvDatabase/chestReal/填充——每关给它们建空物品栏纯属浪费（150 次 AddComponent+CreateInventory）。
+            // 商店走 specialInvDatabase（OpenBuyChest 自建），容器相关接口对 null 物品栏都有空判断，跳过安全。
+            if (!(this is IObjectContainer))
+            {
                 return;
             }
             // prefab 模板跳过

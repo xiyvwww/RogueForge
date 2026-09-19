@@ -123,6 +123,16 @@ public static class CustomObjects
     private static readonly HashSet<string> scannedPluginAssemblies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// 已知框架/依赖 DLL 前缀：即使未被加载也绝不 LoadFrom（加载第三方框架库可能触发其初始化、
+    /// 与其他 mod 的依赖版本冲突，是"与其他 mod 一起加载卡死"的常见来源之一）。
+    /// </summary>
+    private static readonly string[] FrameworkDllPrefixes =
+    {
+        "Unity", "System", "Mono", "Microsoft", "netstandard", "mscorlib", "BepInEx", "0Harmony",
+        "MonoMod", "HarmonyLib", "Newtonsoft", "Ionic", "ICSharpCode", "SimpleJson", "com.unity",
+    };
+
+    /// <summary>
     /// 扫描 BepInEx/plugins 目录下所有 dll，统一加载其中的 [RLSetup] 注册（多 dll 支持）。
     /// 由 <see cref="CustomBuildingsPlugin.Initialize"/> 自动调用，也可手动调用。
     ///
@@ -180,6 +190,15 @@ public static class CustomObjects
                 if (!scannedPluginAssemblies.Add(simpleName)) { skipped++; continue; }   // 本会话已处理过
                 if (string.Equals(simpleName, selfName, StringComparison.OrdinalIgnoreCase)) { skipped++; continue; }   // 本库自身（无 [RLSetup]）
                 if (activeLocations.Contains(dll)) { skipped++; continue; }   // 活跃插件：由 BepInEx 调 Awake 自行注册
+
+                // 性能/稳定性：已知框架库（Unity*/System*/Mono* 等）无论是否已加载都直接跳过——
+                // 它们不可能是自定义建筑库，LoadFrom 只会带来反射扫描开销和潜在的依赖冲突（加载卡死风险）
+                bool isFramework = false;
+                foreach (string prefix in FrameworkDllPrefixes)
+                {
+                    if (simpleName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) { isFramework = true; break; }
+                }
+                if (isFramework) { skipped++; continue; }
 
                 // 性能优化：程序集已加载 → 直接跳过，不再做全类型反射扫描。
                 // 已加载说明它是其他插件或其依赖库（UniTask / System.* / 0Harmony 等都没有 [RLSetup]），
