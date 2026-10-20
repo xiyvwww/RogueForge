@@ -56,6 +56,12 @@
     <Reference Include="netstandard">
       <HintPath>..\..\.ref\static\netstandard.dll</HintPath>
     </Reference>
+    <!-- QuestMarker 等原版组件继承自 Mirror 的 NetworkBehaviour，
+         访问其成员（如 gameObject）必须引用该程序集，否则报 CS0012 -->
+    <Reference Include="Mirror">
+      <HintPath>..\..\.ref\static\Mirror.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="RogueLibsCore">
       <HintPath>..\..\.ref\RogueLibsCore.dll</HintPath>
     </Reference>
