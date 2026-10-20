@@ -1,5 +1,5 @@
 # RogueForge
-为地痞街区的RougeLibs扩展出自定义建筑功能。/Extend custom building functionality for RogueLibs in Streets of Rogue.
+为地痞街区的RogueLibs扩展出自定义建筑功能。/Extend custom building functionality for RogueLibs in Streets of Rogue.
 
 **作者主页：https://space.bilibili.com/3546624213125988?spm_id_from=333.1007.0.0**
 **地痞街区2官群：893076691(地痞街区2依旧跳票中，进群获得最新资讯)**
@@ -8,7 +8,7 @@
 **(框架做了好久，能搞出来很不容易，给个start和关注吧，求求了(⋟﹏⋞))**
 
 ***引言：***
-- 有一件事情非常重要，必须要放在开头讲，就是作者为写这个，连最近的黎明杀机的2v8都没去玩。不止如此，为了尽快写出来，作者这期间竟然都没有碰黎明杀机。看在作者如此努力的情况下，关注、点赞、投币、start就都给了吧，求求了ಠ~ಠ 。
+- 有一件事情非常重要，必须要放在开头讲，就是作者为写这个，连最近的黎明杀机的2v8都没去玩。不止如此，为了尽快写出来，作者这期间竟然都没有碰黎明杀机。看在作者如此努力的情况下，关注、点赞、投币、star就都给了吧，求求了ಠ~ಠ 。
 1. 该文档的PDF格式由AI生成，原文为.md格式，在Github仓库中即时更新。
 2. 该项目算是RogueLibs的扩展，因为使用了好多RogueLibs库里的功能，所以在开发或使用时请引用RogueLibs。
 3. RogueForge提供了许多方便的工具类和接口，相互组合可以衍生很多玩法。但毕竟不会做到完全全面，如果在其他地方要判断或使用自定义建筑，建议使用CustomObjectReal(继承ObjectReal)做类判断。
